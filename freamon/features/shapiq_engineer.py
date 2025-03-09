@@ -8,13 +8,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-try:
-    import shapiq
-    from shapiq.explainer import KernelExplainer
-    SHAPIQ_AVAILABLE = True
-except ImportError:
-    SHAPIQ_AVAILABLE = False
-    warnings.warn("shapiq package is not installed. ShapIQFeatureEngineer will not be available.")
+# Force SHAPIQ_AVAILABLE to True since we've verified it's installed
+import shapiq
+from shapiq.explainer import TabularExplainer
+SHAPIQ_AVAILABLE = True
 
 from freamon.explainability.shap_explainer import ShapIQExplainer
 from freamon.features.engineer import create_interaction_features

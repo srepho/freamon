@@ -88,4 +88,4 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [tool.pytest.ini_options]
-addopts = "-k 'not test_shapiq_engineer'"
+addopts = ""

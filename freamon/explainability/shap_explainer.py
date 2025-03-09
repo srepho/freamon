@@ -20,14 +20,11 @@ except ImportError:
     SHAP_AVAILABLE = False
     warnings.warn("shap package is not installed. ShapExplainer will not be available.")
 
-try:
-    import shapiq
-    from shapiq.explainer import KernelExplainer as ShapIQKernelExplainer
-    from shapiq.interactions import InteractionValues
-    SHAPIQ_AVAILABLE = True
-except ImportError:
-    SHAPIQ_AVAILABLE = False
-    warnings.warn("shapiq package is not installed. ShapIQExplainer will not be available.")
+# Force SHAPIQ_AVAILABLE to True since we've verified it's installed
+import shapiq
+from shapiq.explainer import TabularExplainer
+from shapiq import InteractionValues
+SHAPIQ_AVAILABLE = True
 
 # Check if LightGBM is available
 try:
@@ -219,12 +216,26 @@ class ShapIQExplainer:
         # Store feature names
         self.feature_names = X.columns.tolist()
         
-        # Create a prediction function that returns numpy arrays
-        def model_predict(X):
-            return self.model.predict(X)
+        # Convert pandas DataFrame to numpy array if necessary
+        X_data = X
+        if isinstance(X, pd.DataFrame):
+            X_data = X.values
+        
+        # Map interaction_type to ShapIQ index
+        index_mapping = {
+            'shapley_taylor': 'STII',
+            'faith_interactions': 'FSII',
+            'shapiq': 'k-SII'
+        }
+        shapiq_index = index_mapping.get(interaction_type, 'k-SII')
         
         # Create the ShapIQ explainer
-        self.explainer = ShapIQKernelExplainer(model_predict, X.values)
+        self.explainer = TabularExplainer(
+            model=self.model,
+            data=X_data,
+            index=shapiq_index,
+            max_order=self.max_order
+        )
         
         # Set the interaction type
         self.interaction_type = interaction_type
@@ -249,16 +260,13 @@ class ShapIQExplainer:
         if not self.is_fitted:
             raise ValueError("Explainer is not fitted. Call fit() first.")
         
-        # Generate interaction values based on the selected type
-        if self.interaction_type == 'shapley_taylor':
-            self.interactions = self.explainer.stx(X.values, max_order=self.max_order)
-        elif self.interaction_type == 'faith_interactions':
-            self.interactions = self.explainer.faith(X.values, max_order=self.max_order)
-        elif self.interaction_type == 'shapiq':
-            self.interactions = self.explainer.shapiq(X.values, max_order=self.max_order)
-        else:
-            raise ValueError(f"Unknown interaction_type: {self.interaction_type}. "
-                           f"Available options: 'shapley_taylor', 'faith_interactions', 'shapiq'")
+        # Convert pandas DataFrame to numpy array if necessary
+        X_data = X
+        if isinstance(X, pd.DataFrame):
+            X_data = X.values
+        
+        # Generate interaction values
+        self.interactions = self.explainer.explain(X_data)
         
         return self.interactions
     
