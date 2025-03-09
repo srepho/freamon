@@ -880,10 +880,15 @@ class FeatureEngineer:
         self.fitted = True
         return self
         
-    def transform(self) -> Any:
+    def transform(self, X: Optional[Any] = None) -> Any:
         """
         Apply all transformations to the dataframe.
         
+        Parameters
+        ----------
+        X : Optional[Any], default=None
+            The dataframe to transform. If None, use the fitted dataframe.
+            
         Returns
         -------
         Any
@@ -894,10 +899,24 @@ class FeatureEngineer:
         ValueError
             If the engineer has not been fitted.
         """
-        if self.df is None:
-            raise ValueError("The FeatureEngineer must be fitted before transform(). Call fit() first.")
+        if X is not None:
+            # Use the provided dataframe
+            input_df_type = check_dataframe_type(X)
             
-        result = self.df
+            # Convert to pandas internally if needed
+            if input_df_type != 'pandas':
+                result = convert_dataframe(X, 'pandas')
+            else:
+                result = X.copy()
+                
+            output_df_type = input_df_type
+        else:
+            # Use the fitted dataframe
+            if self.df is None:
+                raise ValueError("The FeatureEngineer must be fitted before transform(). Call fit() first.")
+                
+            result = self.df
+            output_df_type = self.df_type
         
         # Apply each transformation in sequence
         for transform in self.transformations:
@@ -915,7 +934,7 @@ class FeatureEngineer:
                 result = create_lagged_features(result, **transform)
         
         # Convert back to original type if needed
-        if self.df_type != 'pandas':
-            return convert_dataframe(result, self.df_type)
+        if output_df_type != 'pandas':
+            return convert_dataframe(result, output_df_type)
         
         return result

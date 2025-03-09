@@ -273,6 +273,29 @@ class ModelTrainer:
             A Series mapping feature names to importance values.
         """
         return self.model.get_feature_importance(method=method, X=X)
+        
+    def get_feature_importances(self, method: str = 'native', X: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """
+        Get the feature importance from the model as a DataFrame.
+        
+        This is an alias for get_feature_importance but returns a DataFrame for compatibility.
+        
+        Parameters
+        ----------
+        method : str, default='native'
+            The method to use for computing feature importance.
+            Options: 'native', 'shap', 'shapiq'
+        X : Optional[pd.DataFrame], default=None
+            Data to use for computing SHAP values.
+            Required if method is 'shap' or 'shapiq'.
+        
+        Returns
+        -------
+        pd.DataFrame
+            Feature importances as a DataFrame.
+        """
+        importance = self.get_feature_importance(method=method, X=X)
+        return pd.DataFrame({"importance": importance})
     
     def save(self, path: str) -> None:
         """
