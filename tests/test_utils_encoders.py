@@ -11,6 +11,18 @@ from freamon.utils.encoders import (
     TargetEncoderWrapper,
 )
 
+# Check if category_encoders is installed
+try:
+    import category_encoders
+    from freamon.utils.encoders import (
+        BinaryEncoderWrapper,
+        HashingEncoderWrapper, 
+        WOEEncoderWrapper
+    )
+    CATEGORY_ENCODERS_AVAILABLE = True
+except ImportError:
+    CATEGORY_ENCODERS_AVAILABLE = False
+
 
 class TestOneHotEncoderWrapper:
     """Test class for OneHotEncoderWrapper."""
@@ -43,7 +55,7 @@ class TestOneHotEncoderWrapper:
     
     def test_columns_param(self, sample_df):
         """Test that the columns parameter correctly limits encoding."""
-        encoder = OneHotEncoderWrapper(columns=["categorical"])
+        encoder = OneHotEncoderWrapper(columns=["categorical"], drop=None)
         result = encoder.fit_transform(sample_df)
         
         # Check that only 'categorical' is encoded
@@ -156,3 +168,99 @@ class TestTargetEncoderWrapper:
         # Check that 'A' and 'B' are encoded correctly
         assert result["cat"][0] != global_mean
         assert result["cat"][2] != global_mean
+
+
+@pytest.mark.skipif(not CATEGORY_ENCODERS_AVAILABLE, 
+                    reason="category_encoders package not installed")
+class TestBinaryEncoderWrapper:
+    """Test class for BinaryEncoderWrapper."""
+    
+    @pytest.fixture
+    def sample_df(self):
+        """Create a sample dataframe for testing."""
+        return pd.DataFrame({
+            "numeric": [1, 2, 3, 4, 5],
+            "categorical": ["A", "B", "C", "A", "B"],
+            "binary": ["X", "Y", "X", "Y", "X"],
+        })
+    
+    def test_fit_transform(self, sample_df):
+        """Test the fit_transform method."""
+        encoder = BinaryEncoderWrapper(columns=["categorical"])
+        result = encoder.fit_transform(sample_df)
+        
+        # The original column should be dropped
+        assert "categorical" not in result.columns
+        
+        # New binary encoded columns should be added
+        binary_cols = [col for col in result.columns if col.startswith("categorical_")]
+        assert len(binary_cols) > 0
+        
+        # Original columns should remain
+        assert "numeric" in result.columns
+        assert "binary" in result.columns
+
+
+@pytest.mark.skipif(not CATEGORY_ENCODERS_AVAILABLE, 
+                    reason="category_encoders package not installed")
+class TestHashingEncoderWrapper:
+    """Test class for HashingEncoderWrapper."""
+    
+    @pytest.fixture
+    def sample_df(self):
+        """Create a sample dataframe for testing."""
+        return pd.DataFrame({
+            "numeric": [1, 2, 3, 4, 5],
+            "categorical": ["A", "B", "C", "A", "B"],
+            "high_cardinality": [f"val_{i}" for i in range(5)],
+        })
+    
+    def test_fit_transform(self, sample_df):
+        """Test the fit_transform method."""
+        encoder = HashingEncoderWrapper(
+            columns=["high_cardinality"],
+            n_components=4
+        )
+        result = encoder.fit_transform(sample_df)
+        
+        # The original column should be dropped
+        assert "high_cardinality" not in result.columns
+        
+        # New hashed columns should be added (n_components = 4)
+        hash_cols = [col for col in result.columns if col.startswith("high_cardinality_")]
+        assert len(hash_cols) == 4
+        
+        # Original columns should remain
+        assert "numeric" in result.columns
+        assert "categorical" in result.columns
+
+
+@pytest.mark.skipif(not CATEGORY_ENCODERS_AVAILABLE, 
+                    reason="category_encoders package not installed")
+class TestWOEEncoderWrapper:
+    """Test class for WOEEncoderWrapper."""
+    
+    @pytest.fixture
+    def sample_df(self):
+        """Create a sample dataframe for testing."""
+        return pd.DataFrame({
+            "numeric": [1, 2, 3, 4, 5],
+            "categorical": ["A", "B", "C", "A", "B"],
+            "binary": ["X", "Y", "X", "Y", "X"],
+            "target": [0, 1, 0, 1, 0],
+        })
+    
+    def test_fit_transform(self, sample_df):
+        """Test the fit_transform method."""
+        encoder = WOEEncoderWrapper(columns=["categorical", "binary"])
+        result = encoder.fit_transform(sample_df, "target")
+        
+        # Check that categorical columns have been encoded
+        assert pd.api.types.is_numeric_dtype(result["categorical"])
+        assert pd.api.types.is_numeric_dtype(result["binary"])
+        
+        # Original numeric columns should remain
+        assert np.array_equal(result["numeric"], sample_df["numeric"])
+        
+        # Target column should remain
+        assert "target" in result.columns

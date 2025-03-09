@@ -1,7 +1,7 @@
 """
 Module for handling missing values in dataframes.
 """
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import pandas as pd
 
@@ -65,7 +65,11 @@ def handle_missing_values(
         # Apply the strategy
         if strategy == "drop":
             # Drop rows with any missing value in the specified columns
-            return result.dropna(subset=cols)
+            # If subset is None, drops rows with any missing values across all columns
+            if subset is None:
+                return result.dropna()
+            else:
+                return result.dropna(subset=cols)
         
         elif strategy == "mean":
             # Fill missing values with column means (numeric columns only)

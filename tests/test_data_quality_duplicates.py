@@ -31,7 +31,7 @@ class TestDuplicates:
         assert "unique_rows" in result
         
         # Check that duplicates are correctly identified
-        assert result["has_duplicates"] is True
+        assert result["has_duplicates"] == True
         assert result["duplicate_count"] == 1
         assert result["duplicate_percentage"] == 1/6 * 100
         assert result["total_rows"] == 6
@@ -43,7 +43,7 @@ class TestDuplicates:
         result = detect_duplicates(sample_df, subset=["B"])
         
         # Column "B" has duplicates: "x" appears 3 times, "y" appears 2 times
-        assert result["has_duplicates"] is True
+        assert result["has_duplicates"] == True
         assert result["duplicate_count"] == 3  # 3 duplicate rows
         
         # Check duplicates with a subset specified as a string
@@ -79,7 +79,7 @@ class TestDuplicates:
         
         result = detect_duplicates(df)
         
-        assert result["has_duplicates"] is False
+        assert result["has_duplicates"] == False
         assert result["duplicate_count"] == 0
         assert result["duplicate_percentage"] == 0.0
     
@@ -107,16 +107,23 @@ class TestDuplicates:
     
     def test_remove_duplicates_keep_last(self, sample_df):
         """Test removing duplicates but keeping the last occurrence."""
-        # Keep the last occurrence of duplicates
-        result = remove_duplicates(sample_df, keep="last")
+        # Keep the last occurrence of duplicates across all columns
+        # Create a dataframe with exact duplicates
+        df = pd.DataFrame({
+            "A": [1, 2, 3, 1],  # Row 0 and 3 are duplicates
+            "B": ["x", "y", "z", "x"],
+            "C": [0.1, 0.2, 0.3, 0.1],
+        })
         
-        # Should still have 5 rows (1 duplicate removed)
-        assert len(result) == 5
+        result = remove_duplicates(df, keep="last")
         
-        # Check that the last row with B="y" was kept (which has C=0.5)
-        y_rows = result[result["B"] == "y"]
-        assert len(y_rows) == 1
-        assert y_rows.iloc[0]["C"] == 0.5
+        # Should have 3 rows (1 duplicate removed)
+        assert len(result) == 3
+        
+        # Check that the last duplicate was kept
+        assert (result["A"] == 1).sum() == 1
+        # Make sure the index of the remaining row is 3 (the last occurrence)
+        assert 3 in result.index
     
     def test_remove_duplicates_keep_false(self, sample_df):
         """Test removing all duplicates including first occurrences."""

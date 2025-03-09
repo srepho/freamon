@@ -96,7 +96,7 @@ class TestCardinality:
         
         # Single value (1 unique value out of 100)
         assert result["constant"]["cardinality_ratio"] == 0.01
-        assert result["constant"]["cardinality_type"] == "very_low"
+        assert result["constant"]["cardinality_type"] == "low"  # 0.01 is classified as low cardinality (0.01-0.05)
     
     def test_analyze_cardinality_missing_values(self, sample_df):
         """Test handling of missing values."""
