@@ -602,8 +602,9 @@ class FeatureEngineer:
     
     Parameters
     ----------
-    df : Any
+    df : Any, optional
         The dataframe to process. Can be pandas, polars, or dask.
+        If not provided during initialization, must be provided during fit().
     
     Examples
     --------
@@ -619,17 +620,29 @@ class FeatureEngineer:
     ...     .create_datetime_features('date')
     ...     .transform()
     ... )
+    
+    # Alternatively, provide the dataframe during fit
+    >>> engineer = FeatureEngineer()
+    >>> engineer.create_polynomial_features(['A', 'B'])
+    >>> engineer.create_datetime_features('date')
+    >>> engineer.fit(df)
+    >>> result = engineer.transform()
     """
     
-    def __init__(self, df: Any):
-        """Initialize the FeatureEngineer with a dataframe."""
-        self.df_type = check_dataframe_type(df)
+    def __init__(self, df: Optional[Any] = None):
+        """Initialize the FeatureEngineer with an optional dataframe."""
+        self.df = None
+        self.df_type = None
+        self.fitted = False
         
-        # Convert to pandas internally if needed
-        if self.df_type != 'pandas':
-            self.df = convert_dataframe(df, 'pandas')
-        else:
-            self.df = df.copy()
+        if df is not None:
+            self.df_type = check_dataframe_type(df)
+            
+            # Convert to pandas internally if needed
+            if self.df_type != 'pandas':
+                self.df = convert_dataframe(df, 'pandas')
+            else:
+                self.df = df.copy()
         
         # Initialize transformations list
         self.transformations = []
@@ -832,6 +845,41 @@ class FeatureEngineer:
         
         return self
     
+    def fit(self, df: Any, y: Optional[Any] = None) -> 'FeatureEngineer':
+        """
+        Fit the feature engineer on the given dataframe.
+        
+        Parameters
+        ----------
+        df : Any
+            The dataframe to fit on. Can be pandas, polars, or dask.
+        y : Optional[Any], default=None
+            The target variable (if needed for target encoding).
+            
+        Returns
+        -------
+        FeatureEngineer
+            The fitted engineer.
+            
+        Raises
+        ------
+        ValueError
+            If no dataframe is provided.
+        """
+        if df is None:
+            raise ValueError("A dataframe must be provided to fit the FeatureEngineer.")
+            
+        self.df_type = check_dataframe_type(df)
+        
+        # Convert to pandas internally if needed
+        if self.df_type != 'pandas':
+            self.df = convert_dataframe(df, 'pandas')
+        else:
+            self.df = df.copy()
+            
+        self.fitted = True
+        return self
+        
     def transform(self) -> Any:
         """
         Apply all transformations to the dataframe.
@@ -840,7 +888,15 @@ class FeatureEngineer:
         -------
         Any
             Transformed dataframe in the original type.
+            
+        Raises
+        ------
+        ValueError
+            If the engineer has not been fitted.
         """
+        if self.df is None:
+            raise ValueError("The FeatureEngineer must be fitted before transform(). Call fit() first.")
+            
         result = self.df
         
         # Apply each transformation in sequence

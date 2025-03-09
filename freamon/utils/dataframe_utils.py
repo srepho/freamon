@@ -488,22 +488,27 @@ def _detect_pandas_datetime(
         if sample_size > 0 and len(values) > sample_size:
             values = values.sample(sample_size, random_state=42)
         
-        # Check if the column contains timestamps (all numeric values)
-        if values.str.isnumeric().all():
-            # If all values are numeric and within a reasonable timestamp range
-            numeric_values = values.astype(float)
-            min_timestamp = datetime(1970, 1, 1).timestamp()
-            max_timestamp = datetime(2050, 1, 1).timestamp()
-            if (
-                (numeric_values >= min_timestamp) & 
-                (numeric_values <= max_timestamp)
-            ).mean() >= threshold:
-                # Convert to datetime
-                try:
-                    df[col] = pd.to_datetime(df[col].astype(float), unit='s')
-                    continue
-                except (ValueError, OverflowError):
-                    pass
+        # Check if the column contains numeric-looking timestamps
+        try:
+            # First check if all values are numeric or can be converted to numeric
+            numeric_mask = pd.to_numeric(values, errors='coerce').notna()
+            if numeric_mask.mean() >= threshold:
+                # Try converting these values to numeric and check timestamp range
+                numeric_values = pd.to_numeric(values[numeric_mask])
+                min_timestamp = datetime(1970, 1, 1).timestamp()
+                max_timestamp = datetime(2050, 1, 1).timestamp()
+                
+                # Check if values fall within a reasonable unix timestamp range
+                timestamp_mask = (numeric_values >= min_timestamp) & (numeric_values <= max_timestamp)
+                if timestamp_mask.mean() >= threshold:
+                    # Convert to datetime
+                    try:
+                        df[col] = pd.to_datetime(pd.to_numeric(df[col], errors='coerce'), unit='s')
+                        continue
+                    except (ValueError, OverflowError):
+                        pass
+        except (ValueError, TypeError):
+            pass
         
         # Check if the column follows a date pattern
         is_date = False
@@ -623,7 +628,8 @@ def _detect_polars_datetime(
             pl.col(col).max().alias('max')
         ]).row(0)
         
-        min_val, max_val = min_max['min'], min_max['max']
+        # Access by index instead of string key for polars 0.18+
+        min_val, max_val = min_max[0], min_max[1]
         
         # Check if in reasonable unix timestamp range
         min_timestamp = int(datetime(1970, 1, 1).timestamp())

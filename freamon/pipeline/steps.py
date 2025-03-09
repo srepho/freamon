@@ -391,13 +391,14 @@ class ModelTrainingStep(PipelineStep):
         val_y = kwargs.get('val_y', None)
         
         # Create trainer
+        # Get default model name based on model type
+        model_name = self._get_default_model_name(self.model_type)
+        
         self.trainer = ModelTrainer(
             model_type=self.model_type,
+            model_name=model_name,
             problem_type=self.problem_type,
-            eval_metric=self.eval_metric,
-            hyperparameters=self.hyperparameters,
-            cv_folds=self.cv_folds,
-            early_stopping_rounds=self.early_stopping_rounds,
+            params=self.hyperparameters,
             random_state=self.random_state
         )
         
@@ -457,6 +458,32 @@ class ModelTrainingStep(PipelineStep):
             raise ValueError("predict_proba is only available for classification problems")
         
         return self.trainer.predict_proba(X)
+        
+    def _get_default_model_name(self, model_type: str) -> str:
+        """Get the default model name based on model type.
+        
+        Args:
+            model_type: Model type
+            
+        Returns:
+            Default model name
+        """
+        model_name_map = {
+            'lightgbm': 'LGBMClassifier',
+            'xgboost': 'XGBClassifier',
+            'catboost': 'CatBoostClassifier',
+            'sklearn': 'RandomForestClassifier',
+        }
+        
+        if self.problem_type == 'regression':
+            # Change classifier to regressor
+            model_name = model_name_map.get(model_type, 'RandomForestClassifier')
+            if 'Classifier' in model_name:
+                model_name = model_name.replace('Classifier', 'Regressor')
+        else:
+            model_name = model_name_map.get(model_type, 'RandomForestClassifier')
+            
+        return model_name
     
     def get_feature_importances(self) -> pd.DataFrame:
         """Get feature importances from the trained model.
