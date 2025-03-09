@@ -534,13 +534,20 @@ def _detect_pandas_datetime(
                 except (ValueError, TypeError):
                     continue
     
-    # Also look for integer columns that might be unix timestamps
+    # Look for integer columns that might be unix timestamps
+    # Skip the 'id' column and other small integer columns since they are unlikely to be timestamps
     int_cols = df.select_dtypes(include=['int64', 'int32']).columns.tolist()
+    exclude_cols = ['id', 'ID', 'Id', 'index', 'Index', 'key', 'Key']
+    int_cols = [col for col in int_cols if col not in exclude_cols]
     
     for col in int_cols:
         values = df[col].dropna()
         if sample_size > 0 and len(values) > sample_size:
             values = values.sample(sample_size, random_state=42)
+            
+        # Skip very small values (likely IDs, not timestamps)
+        if values.min() < 1000000:  # Timestamp for 1970-01-12
+            continue
         
         # Check if values are in a reasonable unix timestamp range
         min_timestamp = datetime(1970, 1, 1).timestamp()
