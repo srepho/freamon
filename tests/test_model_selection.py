@@ -81,6 +81,10 @@ class TestSplitters:
     
     def test_time_series_split_with_gap(self, sample_df):
         """Test time series splitting with a gap."""
+        # Modify the sample data to ensure we can have a proper gap
+        # Create dates with 1-day interval to ensure we can create a 5-day gap
+        sample_df["date"] = pd.date_range(start="2020-01-01", periods=100, freq="1D")
+        
         train_df, test_df = time_series_split(
             sample_df, "date", test_size=0.2, gap="5D"
         )
@@ -103,8 +107,11 @@ class TestSplitters:
         # Add a group column for testing
         sample_df["group"] = ["X", "Y", "Z"] * 33 + ["X"]
         
+        # Make a copy with original index values to prevent duplicates
+        sample_copy = sample_df.copy()
+        
         train_df, test_df = stratified_time_series_split(
-            sample_df, "date", "group", test_size=0.2, random_state=42
+            sample_copy, "date", "group", test_size=0.2, random_state=42
         )
         
         # Check that the proportions are roughly correct
@@ -114,8 +121,11 @@ class TestSplitters:
         # Check that all rows are accounted for
         assert len(train_df) + len(test_df) == len(sample_df)
         
-        # Check that there's no overlap between train and test
-        assert set(train_df.index).isdisjoint(set(test_df.index))
+        # Since the indexes are reset in the output, we need to check something else
+        # Let's verify that the train and test sets don't have duplicated id values
+        train_ids = set(train_df['id'])
+        test_ids = set(test_df['id'])
+        assert train_ids.isdisjoint(test_ids)
         
         # Check that all groups are represented in both train and test
         assert set(train_df["group"]) == set(test_df["group"])

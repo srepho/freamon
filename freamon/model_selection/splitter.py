@@ -113,34 +113,39 @@ def time_series_split(
     # Ensure df is sorted by date_column
     df = df.sort_values(by=date_column).reset_index(drop=True)
     
-    # Determine the split point
+    # Convert gap to Timedelta if provided
+    if gap is not None:
+        if isinstance(gap, str):
+            gap = pd.Timedelta(gap)
+    
+    # Determine the test start date
     if isinstance(test_size, float):
         if not 0 < test_size < 1:
             raise ValueError("If test_size is a float, it must be between 0 and 1")
-        split_idx = int(len(df) * (1 - test_size))
+        
+        # Calculate the number of records for test
+        n_test = int(len(df) * test_size)
+        
+        # Get the date where test starts
+        test_start_idx = len(df) - n_test
+        test_start_date = df.iloc[test_start_idx][date_column]
     else:
-        # Convert string or Timedelta to Timedelta
+        # Convert string to Timedelta if needed
         if isinstance(test_size, str):
             test_size = pd.Timedelta(test_size)
         
-        # Calculate the split point based on the test period
-        max_date = df[date_column].max()
-        split_date = max_date - test_size
-        split_idx = df[df[date_column] <= split_date].shape[0]
+        # Calculate the test start date
+        test_start_date = df[date_column].max() - test_size
     
-    # Apply gap if specified
+    # If gap is specified, adjust the train end date to be gap days before test start
     if gap is not None:
-        # Convert string to Timedelta if needed
-        if isinstance(gap, str):
-            gap = pd.Timedelta(gap)
-        
-        # Adjust the split point to create a gap
-        split_date = df.iloc[split_idx][date_column] - gap
-        split_idx = df[df[date_column] <= split_date].shape[0]
+        train_end_date = test_start_date - gap
+    else:
+        train_end_date = test_start_date
     
-    # Split the dataframe
-    train_df = df.iloc[:split_idx].copy()
-    test_df = df.iloc[split_idx:].copy()
+    # Split based on the dates
+    train_df = df[df[date_column] < train_end_date].copy()
+    test_df = df[df[date_column] >= test_start_date].copy()
     
     return train_df, test_df
 
@@ -206,38 +211,42 @@ def stratified_time_series_split(
     # Get unique groups
     groups = df[group_column].unique()
     
+    # Set random seed for reproducibility if provided
+    if random_state is not None:
+        np.random.seed(random_state)
+    
     # Split each group
     for group in groups:
         # Get data for this group
         group_df = df[df[group_column] == group].sort_values(by=date_column)
         
-        # Calculate the number of rows for the test set
+        # Calculate the number of rows for the test set - at least 1 if possible
         n_test = max(1, int(len(group_df) * test_size))
         
-        # Split the group
+        # Need to ensure we have at least one observation in both train and test sets
+        # when a group has enough observations
         if len(group_df) > 1:
-            train_group = group_df.iloc[:-n_test]
-            test_group = group_df.iloc[-n_test:]
-        else:
-            # For groups with only one observation, use random assignment
-            if random_state is not None:
-                np.random.seed(random_state)
-            if np.random.random() < test_size:
-                train_group = pd.DataFrame()
-                test_group = group_df
-            else:
-                train_group = group_df
-                test_group = pd.DataFrame()
-        
-        # Append to the lists
-        if len(train_group) > 0:
+            # Ensure we don't use all observations for test
+            n_test = min(n_test, len(group_df) - 1)
+            
+            # Use the latest observations for test
+            train_group = group_df.iloc[:-n_test].copy()
+            test_group = group_df.iloc[-n_test:].copy()
+            
+            # Append to the lists
             train_dfs.append(train_group)
-        if len(test_group) > 0:
             test_dfs.append(test_group)
+        else:
+            # Handle the case of a single observation group
+            # Use random assignment with the specified test_size probability
+            if np.random.random() < test_size:
+                test_dfs.append(group_df)
+            else:
+                train_dfs.append(group_df)
     
     # Combine all groups
-    train_df = pd.concat(train_dfs, axis=0) if train_dfs else pd.DataFrame(columns=df.columns)
-    test_df = pd.concat(test_dfs, axis=0) if test_dfs else pd.DataFrame(columns=df.columns)
+    train_df = pd.concat(train_dfs) if train_dfs else pd.DataFrame(columns=df.columns)
+    test_df = pd.concat(test_dfs) if test_dfs else pd.DataFrame(columns=df.columns)
     
     # Reset indices
     train_df = train_df.reset_index(drop=True)

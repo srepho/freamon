@@ -167,7 +167,7 @@ class DataQualityAnalyzer:
         # Count value types for each column
         type_consistency = {}
         for col in self.df.columns:
-            if pd.api.types.is_numeric_dtype(self.df[col]):
+            if col in self.df.select_dtypes(include=['number']).columns:
                 # For numeric columns, check if there are strings or other types
                 # that have been coerced to NaN
                 has_nan = self.df[col].isna().any()

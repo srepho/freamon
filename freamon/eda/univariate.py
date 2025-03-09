@@ -39,7 +39,9 @@ def analyze_numeric(
     if column not in df.columns:
         raise ValueError(f"Column '{column}' not found in dataframe")
     
-    if not pd.api.types.is_numeric_dtype(df[column]):
+    # Check if column is numeric using select_dtypes
+    numeric_cols = df.select_dtypes(include=['number']).columns
+    if column not in numeric_cols:
         raise ValueError(f"Column '{column}' is not numeric")
     
     # Get the series
@@ -138,7 +140,7 @@ def analyze_categorical(
     series = df[column]
     
     # Check if boolean - handle as special case
-    is_boolean = pd.api.types.is_bool_dtype(series) or (
+    is_boolean = column in df.select_dtypes(include=['bool']).columns or (
         series.dropna().nunique() == 2 and 
         set(series.dropna().unique()).issubset({0, 1, True, False})
     )
@@ -253,7 +255,9 @@ def analyze_datetime(
     
     # Get the series and ensure it's datetime
     series = df[column]
-    if not pd.api.types.is_datetime64_dtype(series):
+    datetime_cols = df.select_dtypes(include=['datetime']).columns
+    
+    if column not in datetime_cols:
         try:
             series = pd.to_datetime(series)
         except (ValueError, TypeError):
@@ -283,15 +287,17 @@ def analyze_datetime(
         "minute": series.dt.minute if series.dt.minute.nunique() > 1 else None,
     }
     
-    # Remove components with no variation
+    # Remove components with no variation and build date_components
     date_components = {}
     for part, values in date_parts.items():
-        if values is not None and values.nunique() > 1:
-            date_components[part] = {
-                "unique": int(values.nunique()),
-                "min": int(values.min()) if not pd.isna(values.min()) else None,
-                "max": int(values.max()) if not pd.isna(values.max()) else None,
-            }
+        if values is not None:
+            # Always keep year, month, day, weekday even if no variation
+            if part in ["year", "month", "day", "weekday"] or values.nunique() > 1:
+                date_components[part] = {
+                    "unique": int(values.nunique()),
+                    "min": int(values.min()) if not pd.isna(values.min()) else None,
+                    "max": int(values.max()) if not pd.isna(values.max()) else None,
+                }
     
     stats["components"] = date_components
     

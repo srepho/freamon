@@ -57,7 +57,7 @@ def visualize_pipeline(
         Otherwise, saves the visualization to the specified path and returns None.
     """
     if GRAPHVIZ_AVAILABLE:
-        return _visualize_pipeline_graphviz(pipeline, output_path, format, show_details)
+        return _visualize_pipeline_graphviz(pipeline, output_path, format, show_details, dpi)
     else:
         return _visualize_pipeline_matplotlib(pipeline, output_path, format, show_details, dpi)
 
@@ -66,7 +66,8 @@ def _visualize_pipeline_graphviz(
     pipeline: Pipeline, 
     output_path: Optional[str] = None,
     format: str = 'png',
-    show_details: bool = True
+    show_details: bool = True,
+    dpi: int = 150
 ) -> Union[str, None]:
     """
     Visualize a pipeline using Graphviz.
@@ -81,6 +82,8 @@ def _visualize_pipeline_graphviz(
         Output format ('png', 'svg', 'pdf')
     show_details : bool, default=True
         Whether to show detailed information about each step.
+    dpi : int, default=150
+        Resolution of the output image.
         
     Returns
     -------
@@ -89,7 +92,8 @@ def _visualize_pipeline_graphviz(
         Otherwise, saves the visualization to the specified path and returns None.
     """
     if not GRAPHVIZ_AVAILABLE:
-        raise ImportError("Graphviz is not installed. Please install it with 'pip install graphviz'.")
+        # Fallback to matplotlib if graphviz is not available
+        return _visualize_pipeline_matplotlib(pipeline, output_path, format, show_details, dpi)
     
     # Create a new directed graph
     dot = graphviz.Digraph(comment='ML Pipeline Visualization')
@@ -320,7 +324,8 @@ def generate_interactive_html(
     pipeline: Pipeline,
     output_path: str,
     include_details: bool = True,
-    include_code_example: bool = True
+    include_code_example: bool = True,
+    use_graphviz: bool = True
 ) -> None:
     """
     Generate an interactive HTML visualization of a pipeline.
@@ -335,6 +340,9 @@ def generate_interactive_html(
         Whether to include detailed information about each step.
     include_code_example : bool, default=True
         Whether to include code example for recreating the pipeline.
+    use_graphviz : bool, default=True
+        Whether to use Graphviz for visualization. If False or if Graphviz is not available,
+        will use Matplotlib instead.
     """
     # Import Jinja2 here to avoid dependency issues if not needed
     import jinja2
@@ -343,7 +351,14 @@ def generate_interactive_html(
     summary = pipeline.summary()
     
     # Generate pipeline visualization
-    pipeline_img = visualize_pipeline(pipeline, format='png', show_details=include_details)
+    if not use_graphviz or not GRAPHVIZ_AVAILABLE:
+        pipeline_img = _visualize_pipeline_matplotlib(pipeline, format='png', show_details=include_details)
+    else:
+        # Try using GraphViz first, fall back to matplotlib if it fails
+        try:
+            pipeline_img = visualize_pipeline(pipeline, format='png', show_details=include_details)
+        except Exception:
+            pipeline_img = _visualize_pipeline_matplotlib(pipeline, format='png', show_details=include_details)
     
     # Generate code example if requested
     code_example = None

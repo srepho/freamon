@@ -139,14 +139,14 @@ class DataDriftDetector:
         cat_cols = []
         for col in common_cols:
             # Check if column is already of categorical type
-            if (pd.api.types.is_categorical_dtype(self.reference_data[col]) or
-                pd.api.types.is_categorical_dtype(self.current_data[col]) or
-                pd.api.types.is_object_dtype(self.reference_data[col]) or
-                pd.api.types.is_object_dtype(self.current_data[col])):
+            ref_dtypes = self.reference_data.select_dtypes(include=['category', 'object'])
+            cur_dtypes = self.current_data.select_dtypes(include=['category', 'object'])
+            
+            if col in ref_dtypes.columns or col in cur_dtypes.columns:
                 cat_cols.append(col)
             # Check for numerical columns with few unique values (less than 5% of rows)
-            elif (pd.api.types.is_numeric_dtype(self.reference_data[col]) and
-                  pd.api.types.is_numeric_dtype(self.current_data[col])):
+            elif col in self.reference_data.select_dtypes(include=['number']).columns and \
+                 col in self.current_data.select_dtypes(include=['number']).columns:
                 n_unique_ref = self.reference_data[col].nunique()
                 n_unique_cur = self.current_data[col].nunique()
                 
@@ -172,12 +172,14 @@ class DataDriftDetector:
             set(self.current_data.columns)
         )
         
+        # Get numerical columns from both dataframes
+        ref_num_cols = set(self.reference_data.select_dtypes(include=['number']).columns)
+        cur_num_cols = set(self.current_data.select_dtypes(include=['number']).columns)
+        
         # Identify numerical columns that are not categorical
         num_cols = []
         for col in common_cols:
-            if (pd.api.types.is_numeric_dtype(self.reference_data[col]) and
-                pd.api.types.is_numeric_dtype(self.current_data[col])):
-                
+            if col in ref_num_cols and col in cur_num_cols:
                 # Skip if already identified as categorical
                 if col in self.cat_features:
                     continue
@@ -200,11 +202,14 @@ class DataDriftDetector:
             set(self.current_data.columns)
         )
         
-        # Identify datetime columns
+        # Get datetime columns from both dataframes
+        ref_dt_cols = set(self.reference_data.select_dtypes(include=['datetime']).columns)
+        cur_dt_cols = set(self.current_data.select_dtypes(include=['datetime']).columns)
+        
+        # Identify datetime columns (in either dataframe)
         datetime_cols = []
         for col in common_cols:
-            if (pd.api.types.is_datetime64_dtype(self.reference_data[col]) or
-                pd.api.types.is_datetime64_dtype(self.current_data[col])):
+            if col in ref_dt_cols or col in cur_dt_cols:
                 datetime_cols.append(col)
         
         return datetime_cols

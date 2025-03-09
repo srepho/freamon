@@ -27,8 +27,8 @@ class TestLightGBMTuner:
         X_df = pd.DataFrame(X, columns=[f'feature_{i}' for i in range(10)])
         y_series = pd.Series(y, name='target')
         
-        # Add categorical feature
-        X_df['cat_feature'] = np.random.choice(['A', 'B', 'C'], size=len(X))
+        # Add categorical feature (as integer to avoid LightGBM dtype issues)
+        X_df['cat_feature'] = np.random.choice([0, 1, 2], size=len(X))
         
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
@@ -49,8 +49,8 @@ class TestLightGBMTuner:
         X_df = pd.DataFrame(X, columns=[f'feature_{i}' for i in range(10)])
         y_series = pd.Series(y, name='target')
         
-        # Add categorical feature
-        X_df['cat_feature'] = np.random.choice(['A', 'B', 'C'], size=len(X))
+        # Add categorical feature (as integer to avoid LightGBM dtype issues)
+        X_df['cat_feature'] = np.random.choice([0, 1, 2], size=len(X))
         
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
@@ -226,8 +226,7 @@ class TestLightGBMTuner:
             X_train, y_train,
             categorical_features=['cat_feature'],
             fixed_params=fixed_params,
-            progressive_tuning=progressive,
-            early_stopping_rounds=10
+            progressive_tuning=progressive
         )
         
         # Check that best parameters were found
@@ -279,8 +278,7 @@ class TestLightGBMTuner:
             X_train, y_train,
             categorical_features=['cat_feature'],
             fixed_params=fixed_params,
-            progressive_tuning=progressive,
-            early_stopping_rounds=10
+            progressive_tuning=progressive
         )
         
         # Check that best parameters were found

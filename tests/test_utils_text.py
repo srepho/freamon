@@ -3,6 +3,8 @@ Tests for the utils.text_utils module.
 """
 import pandas as pd
 import pytest
+from hypothesis import given, strategies as st
+from hypothesis.extra.pandas import column, data_frames
 
 from freamon.utils.text_utils import TextProcessor
 
@@ -135,3 +137,48 @@ class TestTextProcessor:
         
         # Values should be continuous (not just integers)
         assert not (tfidf_df.astype(int) == tfidf_df).all().all()
+    
+    @given(
+        st.lists(
+            st.text(
+                alphabet=st.characters(
+                    whitelist_categories=('Lu', 'Ll'),  # Include letters only
+                    whitelist_characters=' '            # Include space
+                ),
+                min_size=5,  # Ensure texts are long enough
+                max_size=100
+            ).filter(lambda x: len(x.strip()) > 3),  # Ensure non-empty text after stripping
+            min_size=2,      # Need at least 2 documents
+            max_size=10
+        )
+    )
+    def test_text_processing_properties(self, text_samples):
+        """Test text processing properties using hypothesis."""
+        # Create a dataframe from the generated text samples
+        df = pd.DataFrame({'text': text_samples})
+        
+        # Skip empty strings (which can be generated if we only get spaces)
+        if df.text.str.strip().str.len().eq(0).any():
+            return
+            
+        processor = TextProcessor(use_spacy=False)
+        
+        # Property 1: Lowercase processing should make all text lowercase
+        lowercased = processor.process_dataframe_column(df, 'text', lowercase=True)
+        assert (lowercased['text'] == lowercased['text'].str.lower()).all()
+        
+        # Property 2: Removing punctuation should remove all punctuation
+        no_punct = processor.process_dataframe_column(df, 'text', remove_punctuation=True)
+        assert not no_punct['text'].str.contains('[!.,?]').any()
+        
+        # Property 3: Processing should preserve row count
+        processed = processor.process_dataframe_column(
+            df, 'text', lowercase=True, remove_punctuation=True, remove_numbers=True
+        )
+        assert len(processed) == len(df)
+        
+        # Property 4: Creating BOW features should generate a DataFrame with rows matching the input
+        if len(df) > 1:  # CountVectorizer needs at least two documents
+            bow_df = processor.create_bow_features(df, 'text', max_features=5)
+            assert len(bow_df) == len(df)
+            assert all(col.startswith('bow_') for col in bow_df.columns)

@@ -249,7 +249,8 @@ def _optimize_polars_dtypes(df: Any) -> Any:
         if dtype == pl.Int64:
             # Sample the column to find min/max (avoid processing entire column)
             sample = df.select(pl.col(name).min().alias("min"), pl.col(name).max().alias("max")).row(0)
-            col_min, col_max = sample['min'], sample['max']
+            # Access by index instead of string key for polars compatibility (both 0.15+ and 0.18+)
+            col_min, col_max = sample[0], sample[1]
             
             if col_min >= -128 and col_max <= 127:
                 schema[name] = pl.Int8
@@ -586,6 +587,9 @@ def _detect_polars_datetime(
     schema = df.schema
     str_cols = [name for name, dtype in schema.items() if dtype == pl.Utf8]
     
+    # Exclude likely ID column names from timestamp detection
+    exclude_cols = ['id', 'ID', 'Id', 'index', 'Index', 'key', 'Key']
+    
     for col in str_cols:
         # Skip columns with too many null values
         null_ratio = df.select(pl.col(col).is_null().mean()).row(0)[0]
@@ -622,6 +626,9 @@ def _detect_polars_datetime(
     int_cols = [name for name, dtype in schema.items() 
                 if dtype in (pl.Int32, pl.Int64, pl.UInt32, pl.UInt64)]
     
+    # Skip specific column names like 'id', etc.
+    int_cols = [col for col in int_cols if col not in exclude_cols]
+    
     for col in int_cols:
         # Get a sample of values
         if sample_size > 0 and df.height > sample_size:
@@ -635,18 +642,29 @@ def _detect_polars_datetime(
             pl.col(col).max().alias('max')
         ]).row(0)
         
-        # Access by index instead of string key for polars 0.18+
+        # Access by index instead of string key for polars compatibility
         min_val, max_val = min_max[0], min_max[1]
+        
+        # Skip very small values (likely IDs, not timestamps)
+        if min_val is not None and min_val < 1000000:  # Timestamp for 1970-01-12
+            continue
         
         # Check if in reasonable unix timestamp range
         min_timestamp = int(datetime(1970, 1, 1).timestamp())
         max_timestamp = int(datetime(2050, 1, 1).timestamp())
         
         if min_val is not None and max_val is not None and min_val >= min_timestamp and max_val <= max_timestamp:
-            # Try converting to datetime
-            df = df.with_columns([
-                pl.col(col).cast(pl.Int64).cast(pl.Datetime, time_unit='s')
-            ])
+            # Try converting to datetime - handle different Polars versions
+            try:
+                # For newer Polars versions
+                df = df.with_columns([
+                    pl.col(col).cast(pl.Int64).cast(pl.Datetime, time_unit='s')
+                ])
+            except TypeError:
+                # For older Polars versions that don't accept time_unit
+                df = df.with_columns([
+                    pl.from_epoch(pl.col(col).cast(pl.Int64))
+                ])
     
     return df
 

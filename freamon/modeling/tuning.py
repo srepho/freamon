@@ -489,13 +489,13 @@ class LightGBMTuner:
         additional_params = {
             'reg_alpha': {
                 'type': 'continuous',
-                'low': 0.0,
+                'low': 1e-5,  # Use a small positive value instead of 0 for log scale
                 'high': 10.0,
                 'log': True
             },
             'reg_lambda': {
                 'type': 'continuous',
-                'low': 0.0,
+                'low': 1e-5,  # Use a small positive value instead of 0 for log scale
                 'high': 10.0,
                 'log': True
             },

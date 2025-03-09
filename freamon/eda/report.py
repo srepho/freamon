@@ -1041,7 +1041,7 @@ def generate_html_report(
                                                         </tr>
                                                         <tr>
                                                             <th>Percent Change</th>
-                                                            <td>{result.get("percent_change", "N/A"):.2f}%</td>
+                                                            <td>{result.get("percent_change") if result.get("percent_change") is not None else "N/A"}</td>
                                                         </tr>
                 """
             

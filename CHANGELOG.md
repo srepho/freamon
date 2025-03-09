@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-03-15
+
+### Fixed
+- Fixed pandas deprecation warnings in data quality and EDA modules
+  - Updated deprecated `pd.api.types.is_*_dtype()` functions to modern `select_dtypes()` approach
+  - Affected modules: drift analysis, univariate analysis, data quality
+- Fixed LightGBM tuning issues with log-scale parameters
+  - Modified tuning to use small positive values (1e-5) instead of zeros
+  - Updated categorical data type handling in tests
+- Improved pipeline visualization with proper matplotlib fallback
+  - Made visualization work without Graphviz dependency
+  - Updated tests to handle Graphviz absence gracefully
+
+### Added
+- Enhanced property-based testing for text processing utilities
+- Added proper dependency handling for optional packages
+- Improved documentation for optional dependencies
+
 ## [0.2.0] - 2025-03-10
 
 ### Added

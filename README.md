@@ -54,6 +54,8 @@ pip install freamon[nlp]             # For NLP capabilities with spaCy
 pip install freamon[polars]          # For Polars support
 pip install freamon[dask]            # For Dask support
 pip install freamon[explainability]  # For SHAP and ShapIQ integration
+pip install freamon[visualization]   # For pipeline visualization with Graphviz
+pip install freamon[tuning]          # For hyperparameter tuning support
 
 # Development installation
 git clone https://github.com/yourusername/freamon.git

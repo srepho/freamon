@@ -21,7 +21,10 @@ except ImportError:
     SHAPIQ_AVAILABLE = False
 
 from freamon.explainability.shap_explainer import ShapExplainer
-from freamon.explainability.shap_explainer import ShapIQExplainer
+
+# Conditionally import ShapIQExplainer to avoid ImportError
+if SHAPIQ_AVAILABLE:
+    from freamon.explainability.shap_explainer import ShapIQExplainer
 
 
 @pytest.mark.skipif(not SHAP_AVAILABLE, reason="SHAP package not installed")
@@ -77,60 +80,68 @@ class TestShapExplainer:
         assert shap_values.shape == X_sample.shape
 
 
-@pytest.mark.skipif(not SHAPIQ_AVAILABLE, reason="ShapIQ package not installed")
-class TestShapIQExplainer:
-    """Test class for ShapIQExplainer."""
-    
-    @pytest.fixture
-    def sample_data_with_interactions(self):
-        """Create a sample dataset with interactions for testing."""
-        np.random.seed(42)
-        X = pd.DataFrame({
-            'feature1': np.random.uniform(-1, 1, 100),
-            'feature2': np.random.uniform(-1, 1, 100),
-            'feature3': np.random.uniform(-1, 1, 100),
-        })
+# Only define the ShapIQ test class if ShapIQ is available
+if SHAPIQ_AVAILABLE:
+    class TestShapIQExplainer:
+        """Test class for ShapIQExplainer."""
+else:
+    # Create an empty test class for pytest discovery
+    class TestShapIQExplainer:
+        """Placeholder for ShapIQ tests when package is not available."""
+        def test_placeholder(self):
+            """This test is a placeholder when ShapIQ is not available."""
+            pytest.skip("ShapIQ package not installed")
         
-        # Create target with interactions
-        y = (
-            X['feature1'] * X['feature2'] +  # Strong interaction
-            0.5 * X['feature3'] +           # Main effect
-            np.random.normal(0, 0.1, 100)    # Noise
-        )
+        @pytest.fixture
+        def sample_data_with_interactions(self):
+            """Create a sample dataset with interactions for testing."""
+            np.random.seed(42)
+            X = pd.DataFrame({
+                'feature1': np.random.uniform(-1, 1, 100),
+                'feature2': np.random.uniform(-1, 1, 100),
+                'feature3': np.random.uniform(-1, 1, 100),
+            })
+            
+            # Create target with interactions
+            y = (
+                X['feature1'] * X['feature2'] +  # Strong interaction
+                0.5 * X['feature3'] +           # Main effect
+                np.random.normal(0, 0.1, 100)    # Noise
+            )
+            
+            # Train a simple model
+            model = RandomForestRegressor(n_estimators=10, random_state=42)
+            model.fit(X, y)
+            
+            return X, y, model
         
-        # Train a simple model
-        model = RandomForestRegressor(n_estimators=10, random_state=42)
-        model.fit(X, y)
+        def test_init(self, sample_data_with_interactions):
+            """Test initialization of ShapIQExplainer."""
+            X, y, model = sample_data_with_interactions
+            explainer = ShapIQExplainer(model, max_order=2)
+            assert explainer.model == model
+            assert explainer.max_order == 2
+            assert explainer.is_fitted == False
         
-        return X, y, model
-    
-    def test_init(self, sample_data_with_interactions):
-        """Test initialization of ShapIQExplainer."""
-        X, y, model = sample_data_with_interactions
-        explainer = ShapIQExplainer(model, max_order=2)
-        assert explainer.model == model
-        assert explainer.max_order == 2
-        assert explainer.is_fitted == False
-    
-    def test_fit(self, sample_data_with_interactions):
-        """Test fitting the explainer."""
-        X, y, model = sample_data_with_interactions
-        explainer = ShapIQExplainer(model, max_order=2)
-        explainer.fit(X)
-        assert explainer.is_fitted == True
-        assert explainer.explainer is not None
-    
-    def test_explain(self, sample_data_with_interactions):
-        """Test explaining interactions."""
-        X, y, model = sample_data_with_interactions
-        explainer = ShapIQExplainer(model, max_order=2)
-        explainer.fit(X)
+        def test_fit(self, sample_data_with_interactions):
+            """Test fitting the explainer."""
+            X, y, model = sample_data_with_interactions
+            explainer = ShapIQExplainer(model, max_order=2)
+            explainer.fit(X)
+            assert explainer.is_fitted == True
+            assert explainer.explainer is not None
         
-        # Get a sample for explanation
-        X_sample = X.iloc[:5]
-        
-        # Get ShapIQ interaction values
-        interactions = explainer.explain(X_sample)
-        
-        # Check that we have both main effects and interactions
-        assert interactions is not None
+        def test_explain(self, sample_data_with_interactions):
+            """Test explaining interactions."""
+            X, y, model = sample_data_with_interactions
+            explainer = ShapIQExplainer(model, max_order=2)
+            explainer.fit(X)
+            
+            # Get a sample for explanation
+            X_sample = X.iloc[:5]
+            
+            # Get ShapIQ interaction values
+            interactions = explainer.explain(X_sample)
+            
+            # Check that we have both main effects and interactions
+            assert interactions is not None

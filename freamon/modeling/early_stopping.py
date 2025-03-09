@@ -481,15 +481,23 @@ class AdaptiveLearningRateScheduler:
         # Handle warmup if needed
         if epoch < self.warmup_epochs:
             # Linear warmup
-            self.current_lr = self.min_lr + (self.initial_lr - self.min_lr) * (epoch / self.warmup_epochs)
+            warmup_progress = epoch / max(1, self.warmup_epochs)
+            self.current_lr = self.min_lr + (self.initial_lr - self.min_lr) * warmup_progress
         else:
             # Adjust epoch for warmup
             effective_epoch = epoch - self.warmup_epochs
             cycle_position = effective_epoch % cycle_length
             
             # Cosine schedule from initial_lr to min_lr
+            # When cycle_position is 0, cosine_factor is 1.0
+            # When cycle_position is cycle_length, cosine_factor is 0.0
             cosine_factor = 0.5 * (1 + np.cos(np.pi * cycle_position / cycle_length))
-            self.current_lr = self.min_lr + (self.initial_lr - self.min_lr) * cosine_factor
+            
+            # Ensure we actually reach min_lr at the end of the cycle
+            if cycle_position == cycle_length - 1:
+                self.current_lr = self.min_lr
+            else:
+                self.current_lr = self.min_lr + (self.initial_lr - self.min_lr) * cosine_factor
         
         # Apply the new learning rate
         self._set_learning_rate(model, optimizer, self.current_lr)

@@ -107,6 +107,8 @@ The visualization system automatically uses the best available backend:
 1. **Graphviz**: Produces cleaner, more professional visualizations (preferred)
 2. **Matplotlib**: Fallback option if Graphviz is not installed
 
+The system will gracefully fall back to the Matplotlib backend if Graphviz is not available, ensuring that pipeline visualization works in all environments without errors.
+
 To install Graphviz for better visualizations:
 
 ```bash
@@ -121,6 +123,12 @@ brew install graphviz
 
 # On Windows using conda
 conda install graphviz
+```
+
+You can also install this dependency with the visualization optional package:
+
+```bash
+pip install freamon[visualization]
 ```
 
 ## Integrating with Documentation

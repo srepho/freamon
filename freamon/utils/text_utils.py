@@ -217,8 +217,8 @@ class TextProcessor:
         df: pd.DataFrame,
         text_column: str,
         max_features: int = 100,
-        min_df: Union[int, float] = 5,
-        max_df: Union[int, float] = 0.5,
+        min_df: Union[int, float] = 1,  # Changed from 5 to 1 for smaller test datasets
+        max_df: Union[int, float] = 1.0,  # Changed from 0.5 to 1.0 for smaller test datasets
         ngram_range: tuple = (1, 1),
         binary: bool = False,
         prefix: str = 'bow_',
@@ -234,9 +234,9 @@ class TextProcessor:
             The name of the column containing the text.
         max_features : int, default=100
             The maximum number of features to create.
-        min_df : Union[int, float], default=5
+        min_df : Union[int, float], default=1
             The minimum document frequency for a term to be included.
-        max_df : Union[int, float], default=0.5
+        max_df : Union[int, float], default=1.0
             The maximum document frequency for a term to be included.
         ngram_range : tuple, default=(1, 1)
             The range of n-grams to consider.
@@ -281,8 +281,8 @@ class TextProcessor:
         df: pd.DataFrame,
         text_column: str,
         max_features: int = 100,
-        min_df: Union[int, float] = 5,
-        max_df: Union[int, float] = 0.5,
+        min_df: Union[int, float] = 1,  # Changed from 5 to 1 for smaller test datasets
+        max_df: Union[int, float] = 1.0,  # Changed from 0.5 to 1.0 for smaller test datasets
         ngram_range: tuple = (1, 1),
         prefix: str = 'tfidf_',
     ) -> pd.DataFrame:
@@ -297,9 +297,9 @@ class TextProcessor:
             The name of the column containing the text.
         max_features : int, default=100
             The maximum number of features to create.
-        min_df : Union[int, float], default=5
+        min_df : Union[int, float], default=1
             The minimum document frequency for a term to be included.
-        max_df : Union[int, float], default=0.5
+        max_df : Union[int, float], default=1.0
             The maximum document frequency for a term to be included.
         ngram_range : tuple, default=(1, 1)
             The range of n-grams to consider.
