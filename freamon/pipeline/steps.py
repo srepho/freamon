@@ -27,7 +27,7 @@ from freamon.features.engineer import FeatureEngineer
 from freamon.features.selector import FeatureSelector
 from freamon.features.shapiq_engineer import ShapIQFeatureEngineer as ShapIQEngineer
 from freamon.modeling.trainer import ModelTrainer
-from freamon.modeling.factory import ModelFactory, create_model
+from freamon.modeling.factory import create_model
 from freamon.modeling.tuning import LightGBMTuner
 from freamon.modeling.lightgbm import LightGBMModel
 from freamon.modeling.importance import calculate_permutation_importance
