@@ -20,6 +20,84 @@ from sklearn.feature_selection import (
 from freamon.utils import check_dataframe_type, convert_dataframe
 
 
+class FeatureSelector:
+    """Feature selector for choosing the most informative features.
+    
+    This class provides methods for selecting features based on various criteria
+    such as correlation, importance, variance, mutual information, etc.
+    
+    Attributes
+    ----------
+    selected_features_ : List[str]
+        Names of selected features after calling fit or fit_transform
+    scores_ : pd.Series
+        Feature scores (if available) after calling fit or fit_transform
+    """
+    
+    def __init__(self):
+        """Initialize the feature selector."""
+        self.selected_features_ = None
+        self.scores_ = None
+    
+    def fit(self, X, y=None, **kwargs):
+        """Fit the feature selector.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input features
+        y : pd.Series or np.ndarray, optional
+            The target variable
+        **kwargs : dict
+            Additional parameters for the selection method
+            
+        Returns
+        -------
+        self : FeatureSelector
+            The fitted selector
+        """
+        raise NotImplementedError("Subclasses must implement fit method")
+    
+    def transform(self, X):
+        """Transform X by selecting features.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input features
+            
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with only the selected features
+        """
+        if self.selected_features_ is None:
+            raise ValueError("Selector has not been fitted. Call fit first.")
+        
+        # Return only the selected features
+        return X[self.selected_features_]
+    
+    def fit_transform(self, X, y=None, **kwargs):
+        """Fit the selector and transform X.
+        
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input features
+        y : pd.Series or np.ndarray, optional
+            The target variable
+        **kwargs : dict
+            Additional parameters for the selection method
+            
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with only the selected features
+        """
+        self.fit(X, y, **kwargs)
+        return self.transform(X)
+
+
 def select_features(
     df: Any,
     target: Optional[Union[str, pd.Series, np.ndarray]] = None,
