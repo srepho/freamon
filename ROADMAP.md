@@ -19,6 +19,9 @@ This document outlines the planned development phases and milestones for the Fre
   - [x] One-hot encoding
   - [x] Ordinal encoding
   - [x] Target encoding
+  - [x] Binary encoding (via category_encoders)
+  - [x] Hashing encoding (via category_encoders)
+  - [x] Weight of Evidence (WOE) encoding (via category_encoders)
 - [x] Basic text processing
   - [x] Support for spaCy integration
   - [x] Text preprocessing
@@ -61,9 +64,11 @@ This document outlines the planned development phases and milestones for the Fre
 - [ ] Interactive HTML reports
 
 ### Features Module
-- [ ] Automated feature engineering
+- [x] Automated feature engineering
+  - [x] ShapIQ-based interaction detection
+  - [x] Automatic creation of interaction features
 - [ ] Polynomial features
-- [ ] Interaction terms
+- [ ] Standard interaction terms
 - [ ] Time-based features from datetime columns
 - [ ] Feature scaling and normalization
 - [ ] Feature selection methods
@@ -92,10 +97,12 @@ This document outlines the planned development phases and milestones for the Fre
 - [ ] Anomaly detection
 
 ### Model Explainability
-- [ ] SHAP value integration
+- [x] SHAP value integration
+- [x] ShapIQ integration for interaction detection
+- [x] Automatic feature engineering based on interactions
+- [x] Interactive explainability reports
 - [ ] Partial dependence plots
-- [ ] Feature interaction analysis
-- [ ] Interactive explainability reports
+- [ ] Summary visualizations
 
 ### Text Analytics Expansion
 - [ ] Advanced NLP capabilities
