@@ -13,9 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Missing value analysis and handling
   - Outlier detection using IQR, Z-score, and modified Z-score methods
   - Data type analysis
-- Utilities module
+- Utils module
   - Dataframe type checking and conversion
   - Memory usage optimization
   - Memory usage estimation
+  - Categorical encoders (One-hot, Ordinal, Target)
+  - Text processing utilities with optional spaCy integration
+- Model selection module
+  - Train/test splitting
+  - Time-series aware splitting
+  - Stratified time-series splitting
+  - Cross-validation
+  - Time-series cross-validation
+- Modeling module
+  - Model creation factory
+  - Support for scikit-learn, LightGBM, XGBoost, and CatBoost
+  - Unified model interface
+  - Model evaluation metrics
+  - Model training and evaluation
+  - Feature importance extraction
+  - Model persistence
 - Test framework
 - Documentation
+  - README with usage examples
+  - Development roadmap

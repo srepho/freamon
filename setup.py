@@ -13,6 +13,7 @@ setup(
         "scikit-learn",
         "matplotlib",
         "seaborn",
+        "joblib",
     ],
     extras_require={
         "dev": [
@@ -22,6 +23,24 @@ setup(
             "mypy",
             "isort",
             "flake8",
+        ],
+        "all": [
+            "lightgbm",
+            "xgboost",
+            "catboost",
+            "spacy",
+        ],
+        "lightgbm": [
+            "lightgbm",
+        ],
+        "xgboost": [
+            "xgboost",
+        ],
+        "catboost": [
+            "catboost",
+        ],
+        "nlp": [
+            "spacy",
         ],
     },
     python_requires=">=3.10",

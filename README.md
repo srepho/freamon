@@ -4,22 +4,34 @@ A package to make data science projects on tabular data easier. Named after the 
 
 ## Features
 
-- **Data Quality Assessment:** Missing values, outliers, data types, etc.
+- **Data Quality Assessment:** Missing values, outliers, data types, duplicates
 - **Exploratory Data Analysis (EDA):** Statistical analysis and visualizations
 - **Feature Engineering:** Automated and manual feature engineering
+- **Categorical Encoding:** One-hot, ordinal, target encoding
+- **Text Processing:** Basic NLP with optional spaCy integration
 - **Model Selection:** Train/test splitting with time-series awareness
 - **Modeling:** Training, evaluation, and validation
+  - **Support for Multiple Libraries:** scikit-learn, LightGBM, XGBoost, CatBoost
 
 ## Installation
 
 ```bash
-# From PyPI (not yet available)
-# pip install freamon
+# Basic installation
+pip install freamon
+
+# With all optional dependencies
+pip install freamon[all]
+
+# With specific optional dependencies
+pip install freamon[lightgbm]  # For LightGBM support
+pip install freamon[xgboost]   # For XGBoost support
+pip install freamon[catboost]  # For CatBoost support
+pip install freamon[nlp]       # For NLP capabilities with spaCy
 
 # Development installation
 git clone https://github.com/yourusername/freamon.git
 cd freamon
-pip install -e .
+pip install -e ".[dev,all]"
 ```
 
 ## Quick Start
@@ -27,6 +39,9 @@ pip install -e .
 ```python
 import pandas as pd
 from freamon.data_quality import DataQualityAnalyzer
+from freamon.modeling import ModelTrainer
+from freamon.model_selection import train_test_split
+from freamon.utils import OneHotEncoderWrapper
 
 # Load your data
 df = pd.read_csv("your_data.csv")
@@ -38,7 +53,40 @@ analyzer.generate_report("data_quality_report.html")
 # Handle missing values
 from freamon.data_quality import handle_missing_values
 df_clean = handle_missing_values(df, strategy="mean")
+
+# Encode categorical features
+encoder = OneHotEncoderWrapper()
+df_encoded = encoder.fit_transform(df_clean)
+
+# Split data
+train_df, test_df = train_test_split(df_encoded, test_size=0.2, random_state=42)
+
+# Train a model
+feature_cols = [col for col in train_df.columns if col != "target"]
+trainer = ModelTrainer(
+    model_type="lightgbm",
+    model_name="LGBMClassifier",
+    problem_type="classification",
+)
+metrics = trainer.train(
+    train_df[feature_cols],
+    train_df["target"],
+    X_val=test_df[feature_cols],
+    y_val=test_df["target"],
+)
+
+# View the results
+print(f"Validation metrics: {metrics}")
 ```
+
+## Module Overview
+
+- **data_quality:** Tools for assessing and improving data quality
+- **utils:** Utility functions for working with dataframes and encoders
+- **model_selection:** Methods for splitting data and cross-validation
+- **modeling:** Model training, evaluation, and comparison
+
+Check out the [ROADMAP.md](ROADMAP.md) file for information on planned features and development phases.
 
 ## Development
 
@@ -51,7 +99,11 @@ pip install -e ".[dev]"
 Run tests:
 
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage
+pytest --cov=freamon
 ```
 
 ## License
