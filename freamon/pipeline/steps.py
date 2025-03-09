@@ -25,7 +25,7 @@ from sklearn.metrics import (
 from freamon.pipeline.pipeline import PipelineStep
 from freamon.features.engineer import FeatureEngineer
 from freamon.features.selector import FeatureSelector
-from freamon.features.shapiq_engineer import ShapIQEngineer
+from freamon.features.shapiq_engineer import ShapIQFeatureEngineer as ShapIQEngineer
 from freamon.modeling.trainer import ModelTrainer
 from freamon.modeling.factory import ModelFactory, create_model
 from freamon.modeling.tuning import LightGBMTuner
