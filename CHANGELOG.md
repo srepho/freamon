@@ -5,7 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - Unreleased
+## [0.2.0] - 2025-03-10
+
+### Added
+- ShapIQ integration for explainability and feature engineering
+  - Added `ShapIQExplainer` for detecting feature interactions
+  - Added `ShapIQFeatureEngineer` for automatic feature engineering based on detected interactions
+  - Added HTML reporting for interaction analysis
+- Advanced categorical encoders from the category_encoders package
+  - Added `BinaryEncoderWrapper` for binary encoding of categorical variables
+  - Added `HashingEncoderWrapper` for hashing encoding of high-cardinality categorical variables
+  - Added `WOEEncoderWrapper` for weight of evidence encoding
+- Example scripts demonstrating new functionality
+  - Added examples for ShapIQ feature engineering
+  - Added examples for using advanced categorical encoders
+  
+### Changed
+- Enhanced explainability module with SHAP and ShapIQ integration
+- Improved feature engineering capabilities
+
+## [0.1.0] - 2025-02-05
 
 ### Added
 - Initial project structure

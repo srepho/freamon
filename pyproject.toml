@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
-version = "0.1.0"
+version = "0.2.0"
 description = "A package to make data science projects on tabular data easier"
 readme = "README.md"
 authors = [
@@ -27,6 +27,7 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "joblib",
+    "category_encoders",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,8 @@ all = [
     "spacy",
     "polars",
     "dask[dataframe]",
+    "shapiq",
+    "shap",
 ]
 lightgbm = [
     "lightgbm",
@@ -63,6 +66,10 @@ polars = [
 ]
 dask = [
     "dask[dataframe]",
+]
+explainability = [
+    "shapiq",
+    "shap",
 ]
 
 [tool.black]
