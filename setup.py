@@ -29,6 +29,8 @@ setup(
             "xgboost",
             "catboost",
             "spacy",
+            "polars",
+            "dask[dataframe]",
         ],
         "lightgbm": [
             "lightgbm",
@@ -41,6 +43,12 @@ setup(
         ],
         "nlp": [
             "spacy",
+        ],
+        "polars": [
+            "polars",
+        ],
+        "dask": [
+            "dask[dataframe]",
         ],
     },
     python_requires=">=3.10",

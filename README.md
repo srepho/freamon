@@ -16,6 +16,10 @@ A package to make data science projects on tabular data easier. Named after the 
 - **Model Selection:** Train/test splitting with time-series awareness
 - **Modeling:** Training, evaluation, and validation
   - **Support for Multiple Libraries:** scikit-learn, LightGBM, XGBoost, CatBoost
+- **Multiple DataFrame Backends:** 
+  - **Pandas:** Standard interface
+  - **Polars:** High-performance alternative
+  - **Dask:** Out-of-core processing for large datasets
 
 ## Installation
 
@@ -31,6 +35,8 @@ pip install freamon[lightgbm]  # For LightGBM support
 pip install freamon[xgboost]   # For XGBoost support
 pip install freamon[catboost]  # For CatBoost support
 pip install freamon[nlp]       # For NLP capabilities with spaCy
+pip install freamon[polars]    # For Polars support
+pip install freamon[dask]      # For Dask support
 
 # Development installation
 git clone https://github.com/yourusername/freamon.git
@@ -46,9 +52,13 @@ from freamon.data_quality import DataQualityAnalyzer
 from freamon.modeling import ModelTrainer
 from freamon.model_selection import train_test_split
 from freamon.utils import OneHotEncoderWrapper
+from freamon.utils.dataframe_utils import detect_datetime_columns
 
 # Load your data
 df = pd.read_csv("your_data.csv")
+
+# Automatically detect and convert datetime columns
+df = detect_datetime_columns(df)
 
 # Analyze data quality
 analyzer = DataQualityAnalyzer(df)
@@ -83,10 +93,34 @@ metrics = trainer.train(
 print(f"Validation metrics: {metrics}")
 ```
 
+### Using with Polars
+
+```python
+import polars as pl
+from freamon.utils.dataframe_utils import detect_datetime_columns, convert_dataframe
+
+# Load data with Polars
+df = pl.read_csv("your_data.csv")
+
+# Detect and convert datetime columns
+df = detect_datetime_columns(df)
+
+# Convert to pandas for operations that require it
+pandas_df = convert_dataframe(df, "pandas")
+
+# ... perform operations ...
+
+# Convert back to polars
+result = convert_dataframe(pandas_df, "polars")
+```
+
 ## Module Overview
 
 - **data_quality:** Tools for assessing and improving data quality
 - **utils:** Utility functions for working with dataframes and encoders
+  - **dataframe_utils:** Tools for different dataframe backends and date detection
+  - **encoders:** Categorical variable encoding tools
+  - **text_utils:** Text processing utilities
 - **model_selection:** Methods for splitting data and cross-validation
 - **modeling:** Model training, evaluation, and comparison
 

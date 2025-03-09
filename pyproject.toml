@@ -43,6 +43,8 @@ all = [
     "xgboost",
     "catboost",
     "spacy",
+    "polars",
+    "dask[dataframe]",
 ]
 lightgbm = [
     "lightgbm",
@@ -55,6 +57,12 @@ catboost = [
 ]
 nlp = [
     "spacy",
+]
+polars = [
+    "polars",
+]
+dask = [
+    "dask[dataframe]",
 ]
 
 [tool.black]

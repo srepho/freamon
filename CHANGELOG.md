@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Memory usage estimation
   - Categorical encoders (One-hot, Ordinal, Target)
   - Text processing utilities with optional spaCy integration
+  - Automatic date/time detection and conversion
+  - Support for multiple dataframe backends (Pandas, Polars, Dask)
 - Model selection module
   - Train/test splitting
   - Time-series aware splitting
