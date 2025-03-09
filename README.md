@@ -4,6 +4,9 @@
   <img src="package_logo.webp" alt="Freamon Logo" width="250"/>
 </p>
 
+[![PyPI version](https://badge.fury.io/py/freamon.svg)](https://badge.fury.io/py/freamon)
+[![GitHub release](https://img.shields.io/github/v/release/srepho/freamon)](https://github.com/srepho/freamon/releases)
+
 A package to make data science projects on tabular data easier. Named after the great character from The Wire played by Clarke Peters.
 
 ## Features
