@@ -139,7 +139,9 @@ def _visualize_pipeline_graphviz(
     dot.node('input', 'Input Data', shape='parallelogram', style='filled', fillcolor='lightgrey')
     dot.edge('input', 'step_0')
     
-    if any(isinstance(step, type(s for s in pipeline.steps if "Model" in s.__class__.__name__)):
+    # Check if any step is a model step
+    has_model_step = any("Model" in step.__class__.__name__ for step in pipeline.steps)
+    if has_model_step:
         dot.node('output', 'Predictions', shape='parallelogram', style='filled', fillcolor='lightgrey')
         dot.edge(f'step_{len(pipeline.steps)-1}', 'output')
     
