@@ -77,10 +77,28 @@ Based on the roadmap and current status, here are the next development prioritie
 
 ## Bug Fixes and Technical Debt
 
-- Fix tests failing in feature selection and model training steps
-- Address issues in pipeline visualization
-- Resolve compatibility issues with latest pandas version (use `isinstance` instead of deprecated `is_categorical_dtype`)
-- Fix ShapIQ integration issues when library is not available
+### Completed Fixes (v0.2.1 patch)
+
+- ✅ Fixed pipeline tests by:
+  - Making FeatureEngineer accept an optional dataframe
+  - Adding fit() method to FeatureEngineer and ModelTrainer
+  - Fixing MockPipelineStep for testing
+  - Improving robustness of test assertions
+
+- ✅ Fixed datetime detection tests by:
+  - Converting DatetimeIndex to Series for assertions
+  - Excluding ID-like columns from timestamp detection
+  - Fixing custom date format tests
+
+### Remaining Issues to Address
+
+- Text processing features (CountVectorizer and TfidfVectorizer parameters)
+- Polars integration (time_unit parameter in datetime conversion)
+- ShapIQ-related tests (graceful handling when library not available)
+- Pipeline visualization (handle FeatureEngineer initialization)
+- Early stopping issue with cosine annealing
+- Charts/HTML generation in EDA module
+- Fix pandas DeprecationWarning for is_categorical_dtype
 
 ## Release Planning
 
