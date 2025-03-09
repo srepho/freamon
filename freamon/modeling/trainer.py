@@ -55,6 +55,39 @@ class ModelTrainer:
         # Initialize training history
         self.history: Dict[str, List[float]] = {}
     
+    def fit(
+        self,
+        X_train: Union[pd.DataFrame, np.ndarray],
+        y_train: Union[pd.Series, np.ndarray],
+        X_val: Optional[Union[pd.DataFrame, np.ndarray]] = None,
+        y_val: Optional[Union[pd.Series, np.ndarray]] = None,
+        **kwargs
+    ) -> 'ModelTrainer':
+        """
+        Fit the model on the given data.
+        
+        Parameters
+        ----------
+        X_train : Union[pd.DataFrame, np.ndarray]
+            The training features.
+        y_train : Union[pd.Series, np.ndarray]
+            The training target values.
+        X_val : Optional[Union[pd.DataFrame, np.ndarray]], default=None
+            The validation features. If provided, used for early stopping.
+        y_val : Optional[Union[pd.Series, np.ndarray]], default=None
+            The validation target values. Required if X_val is provided.
+        **kwargs
+            Additional keyword arguments to pass to the model's fit method.
+            
+        Returns
+        -------
+        ModelTrainer
+            The fitted trainer instance.
+        """
+        # Train the model using the train method
+        self.train(X_train, y_train, X_val, y_val, **kwargs)
+        return self
+        
     def train(
         self,
         X_train: Union[pd.DataFrame, np.ndarray],

@@ -63,12 +63,18 @@ class FeatureEngineeringStep(PipelineStep):
         """Add a feature engineering operation.
         
         Args:
-            method: Name of FeatureEngineer method to call
+            method: Name of operation to perform
             **params: Parameters to pass to the method
             
         Returns:
             self: For method chaining
         """
+        # Map legacy 'add_' method names to 'create_' method names for backward compatibility
+        if method.startswith("add_") and not hasattr(FeatureEngineer, method):
+            create_method = method.replace("add_", "create_")
+            if hasattr(FeatureEngineer, create_method):
+                method = create_method
+        
         self.operations.append({
             'method': method,
             'params': params
