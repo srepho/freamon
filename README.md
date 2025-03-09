@@ -1,5 +1,9 @@
 # freamon
 
+<p align="center">
+  <img src="package_logo.webp" alt="Freamon Logo" width="250"/>
+</p>
+
 A package to make data science projects on tabular data easier. Named after the great character from The Wire played by Clarke Peters.
 
 ## Features
