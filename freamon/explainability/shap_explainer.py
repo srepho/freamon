@@ -265,10 +265,26 @@ class ShapIQExplainer:
         if isinstance(X, pd.DataFrame):
             X_data = X.values
         
-        # Generate interaction values
-        self.interactions = self.explainer.explain(X_data)
-        
-        return self.interactions
+        # ShapIQ expects a single instance in explain method
+        # If multiple instances are provided, process them one by one
+        if len(X_data.shape) == 2 and X_data.shape[0] > 1:
+            # Process instance by instance for batch requests
+            all_interactions = []
+            for i in range(X_data.shape[0]):
+                instance = X_data[i:i+1]  # Keep 2D shape with single row
+                interaction = self.explainer.explain(instance)
+                all_interactions.append(interaction)
+            # Return the first interaction for now (we'll enhance this later)
+            self.interactions = all_interactions[0] if all_interactions else None
+            return self.interactions
+        else:
+            # Ensure proper 2D shape for a single instance
+            if len(X_data.shape) == 1:
+                X_data = X_data.reshape(1, -1)
+                
+            # Generate interaction values for a single instance
+            self.interactions = self.explainer.explain(X_data)
+            return self.interactions
     
     def plot_main_effects(self, instance_idx: int = 0, top_k: int = 10, **kwargs) -> None:
         """

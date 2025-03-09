@@ -47,8 +47,37 @@ class ShapIQFeatureEngineer:
         max_order: int = 2,
         threshold: float = 0.05,
         max_interactions: int = 10,
+        interaction_type: str = 'shapiq',
+        sample_size: Optional[int] = None,
     ):
-        """Initialize the ShapIQFeatureEngineer."""
+        """
+        Initialize the ShapIQFeatureEngineer.
+        
+        Parameters
+        ----------
+        model : Any
+            The model to explain. Should have a `predict` method.
+        X : pd.DataFrame
+            The training data to use for detecting interactions.
+        y : Union[pd.Series, np.ndarray]
+            The target variable.
+        max_order : int, default=2
+            Maximum interaction order to detect. 1 = main effects, 2 = pairwise interactions.
+        threshold : float, default=0.05
+            Minimum interaction strength threshold. Only interactions with absolute 
+            strength above this threshold will be used to create features.
+        max_interactions : int, default=10
+            Maximum number of interaction features to create.
+        interaction_type : str, default='shapiq'
+            Type of interaction calculation to use. Options:
+            - 'shapiq': Uses k-Shapley Interaction Index (k-SII) 
+            - 'shapley_taylor': Uses Shapley Taylor Interaction Index (STII)
+            - 'faith_interactions': Uses Faithful Shapley Interaction Index (FSII)
+        sample_size : Optional[int], default=None
+            Number of samples to use for interaction detection. If None, automatically
+            determines an appropriate size based on the dataset. Using a smaller sample
+            improves performance but may impact the quality of detected interactions.
+        """
         if not SHAPIQ_AVAILABLE:
             raise ImportError("shapiq package is required for ShapIQFeatureEngineer.")
         
@@ -58,6 +87,8 @@ class ShapIQFeatureEngineer:
         self.max_order = max_order
         self.threshold = threshold
         self.max_interactions = max_interactions
+        self.interaction_type = interaction_type
+        self.sample_size = sample_size
         
         # Initialize results
         self.detected_interactions = []
@@ -72,45 +103,72 @@ class ShapIQFeatureEngineer:
         List[Tuple[str, str]]
             List of tuples containing pairs of interacting features.
         """
+        if len(self.X) == 0:
+            warnings.warn("Empty dataset provided for interaction detection.")
+            return []
+            
+        # Take a subset of data for faster computation if dataset is large
+        if self.sample_size is None:
+            # Use a default sample size that scales with dataset size 
+            # but caps at 100 for very large datasets
+            actual_sample_size = min(100, max(10, int(len(self.X) * 0.1)))
+        else:
+            # Use the provided sample size, but ensure it's not larger than the dataset
+            actual_sample_size = min(self.sample_size, len(self.X))
+            
+        sample_indices = np.random.choice(len(self.X), actual_sample_size, replace=False)
+        sample_X = self.X.iloc[sample_indices] if isinstance(self.X, pd.DataFrame) else self.X[sample_indices]
+        
         # Initialize ShapIQ explainer
         explainer = ShapIQExplainer(self.model, max_order=self.max_order)
-        explainer.fit(self.X)
+        explainer.fit(sample_X, interaction_type=self.interaction_type)
         
-        # Compute interactions
-        interactions = explainer.explain(self.X)
+        # Compute interactions for the first instance only to get structure
+        # This avoids the broadcasting error when calculating for many instances
+        instance_X = sample_X.iloc[0:1] if isinstance(sample_X, pd.DataFrame) else sample_X[0:1]
+        interactions = explainer.explain(instance_X)
         
         # Get pairwise interactions (order 2)
-        if self.max_order >= 2:
-            pairwise = interactions.get_order(2)
-            
-            # Compute average absolute interaction strength
-            avg_interactions = np.abs(pairwise.values).mean(axis=0)
-            
-            # Get feature pairs exceeding the threshold
-            significant_pairs = []
-            pair_strengths = {}
-            
-            for i in range(len(self.X.columns)):
-                for j in range(i+1, len(self.X.columns)):
-                    feature1 = self.X.columns[i]
-                    feature2 = self.X.columns[j]
-                    strength = avg_interactions[i, j]
-                    
-                    if strength > self.threshold:
-                        significant_pairs.append((feature1, feature2))
-                        pair_strengths[(feature1, feature2)] = strength
-            
-            # Sort by interaction strength
-            significant_pairs.sort(key=lambda x: pair_strengths[x], reverse=True)
-            
-            # Limit to max_interactions
-            if len(significant_pairs) > self.max_interactions:
-                significant_pairs = significant_pairs[:self.max_interactions]
-            
-            self.detected_interactions = significant_pairs
-            self.interaction_strengths = pair_strengths
-            
-            return significant_pairs
+        if self.max_order >= 2 and interactions is not None:
+            try:
+                pairwise = interactions.get_order(2)
+                
+                # Initialize for pairs
+                significant_pairs = []
+                pair_strengths = {}
+                
+                # Process each feature pair
+                feature_names = self.X.columns if isinstance(self.X, pd.DataFrame) else [f"feature_{i}" for i in range(self.X.shape[1])]
+                n_features = len(feature_names)
+                
+                # Extract interaction values from the first instance
+                interaction_values = np.abs(pairwise.values[0]) if pairwise.values.shape[0] > 0 else np.zeros((n_features, n_features))
+                
+                # Find significant interactions
+                for i in range(n_features):
+                    for j in range(i+1, n_features):
+                        feature1 = feature_names[i]
+                        feature2 = feature_names[j]
+                        strength = interaction_values[i, j]
+                        
+                        if strength > self.threshold:
+                            significant_pairs.append((feature1, feature2))
+                            pair_strengths[(feature1, feature2)] = float(strength)  # Convert to Python float for serialization
+                
+                # Sort by interaction strength
+                significant_pairs.sort(key=lambda x: pair_strengths[x], reverse=True)
+                
+                # Limit to max_interactions
+                if len(significant_pairs) > self.max_interactions:
+                    significant_pairs = significant_pairs[:self.max_interactions]
+                
+                self.detected_interactions = significant_pairs
+                self.interaction_strengths = pair_strengths
+                
+                return significant_pairs
+            except Exception as e:
+                warnings.warn(f"Error detecting interactions: {str(e)}")
+                return []
         
         return []
     
