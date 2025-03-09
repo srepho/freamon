@@ -34,9 +34,16 @@ setup(
             "dask[dataframe]",
             "shapiq",
             "shap",
+            "optuna>=3.0.0",
+            "plotly",
         ],
         "lightgbm": [
             "lightgbm",
+            "optuna>=3.0.0",
+        ],
+        "tuning": [
+            "optuna>=3.0.0",
+            "plotly",
         ],
         "xgboost": [
             "xgboost",
@@ -56,6 +63,10 @@ setup(
         "explainability": [
             "shapiq",
             "shap",
+        ],
+        "visualization": [
+            "plotly",
+            "graphviz",
         ],
     },
     python_requires=">=3.10",

@@ -221,16 +221,25 @@ class ModelTrainer:
             y_proba=y_proba,
         )
     
-    def get_feature_importance(self) -> pd.Series:
+    def get_feature_importance(self, method: str = 'native', X: Optional[pd.DataFrame] = None) -> pd.Series:
         """
         Get the feature importance from the model.
+        
+        Parameters
+        ----------
+        method : str, default='native'
+            The method to use for computing feature importance.
+            Options: 'native', 'shap', 'shapiq'
+        X : Optional[pd.DataFrame], default=None
+            The data to use for computing SHAP values.
+            Required if method is 'shap' or 'shapiq'.
         
         Returns
         -------
         pd.Series
             A Series mapping feature names to importance values.
         """
-        return self.model.get_feature_importance()
+        return self.model.get_feature_importance(method=method, X=X)
     
     def save(self, path: str) -> None:
         """

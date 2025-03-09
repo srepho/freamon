@@ -1,5 +1,5 @@
 """
-Utility functions for encoding categorical features.
+Base encoder classes for categorical variables.
 """
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -315,7 +315,7 @@ class OrdinalEncoderWrapper(EncoderWrapper):
 
 class TargetEncoderWrapper(EncoderWrapper):
     """
-    Target encoder for categorical features with cross-validation support.
+    Target encoder for categorical features.
     
     Parameters
     ----------
@@ -331,13 +331,6 @@ class TargetEncoderWrapper(EncoderWrapper):
     handle_missing : str, default='value'
         How to handle missing values.
         Options: 'value' (use the global mean), 'error'.
-    cv : int, default=5
-        Number of cross-validation folds for preventing target leakage. 
-        Set to 0 to disable cross-validation.
-    shuffle : bool, default=True
-        Whether to shuffle the data before cross-validation splitting.
-    random_state : Optional[int], default=None
-        Random seed for reproducibility when shuffling.
     """
     
     def __init__(
@@ -347,9 +340,6 @@ class TargetEncoderWrapper(EncoderWrapper):
         min_samples_leaf: int = 1,
         handle_unknown: str = 'value',
         handle_missing: str = 'value',
-        cv: int = 5,
-        shuffle: bool = True,
-        random_state: Optional[int] = None,
     ):
         """Initialize the TargetEncoderWrapper."""
         super().__init__(None, columns)
@@ -357,43 +347,8 @@ class TargetEncoderWrapper(EncoderWrapper):
         self.min_samples_leaf = min_samples_leaf
         self.handle_unknown = handle_unknown
         self.handle_missing = handle_missing
-        self.cv = cv
-        self.shuffle = shuffle
-        self.random_state = random_state
         self.target_mean: float = 0.0
         self.mapping: Dict[str, Dict[Any, float]] = {}
-    
-    def _calculate_mapping(self, df: pd.DataFrame, col: str, target: str) -> Dict[Any, float]:
-        """
-        Calculate the target encoding mapping for a column.
-        
-        Parameters
-        ----------
-        df : pd.DataFrame
-            The dataframe to calculate the mapping for.
-        col : str
-            The column to create a mapping for.
-        target : str
-            The target column name.
-            
-        Returns
-        -------
-        Dict[Any, float]
-            A dictionary mapping categories to their encoded values.
-        """
-        # Group by the categorical column and calculate stats
-        stats = df.groupby(col)[target].agg(['count', 'mean'])
-        
-        # Apply smoothing
-        smoothed_mean = (
-            stats['count'] * stats['mean'] + self.smoothing * self.target_mean
-        ) / (stats['count'] + self.smoothing)
-        
-        # Filter out categories with too few samples
-        smoothed_mean = smoothed_mean[stats['count'] >= self.min_samples_leaf]
-        
-        # Return the mapping
-        return smoothed_mean.to_dict()
     
     def fit(self, df: pd.DataFrame, target: str) -> 'TargetEncoderWrapper':
         """
@@ -430,54 +385,17 @@ class TargetEncoderWrapper(EncoderWrapper):
         
         # Calculate target encoding for each column
         self.mapping = {}
-        
-        if self.cv <= 1:
-            # Simple fitting without cross-validation
-            for col in self.input_columns:
-                self.mapping[col] = self._calculate_mapping(df, col, target)
-        else:
-            # Use cross-validation to prevent target leakage
-            try:
-                from sklearn.model_selection import KFold
-            except ImportError:
-                raise ImportError(
-                    "scikit-learn is not installed. "
-                    "Install it with 'pip install scikit-learn'."
-                )
-            
-            kf = KFold(n_splits=self.cv, shuffle=self.shuffle, random_state=self.random_state)
-            
-            # Calculate encoding on each CV fold
-            for col in self.input_columns:
-                # First create a copy of the dataframe with the target column
-                df_encoded = df.copy()
-                
-                # Then encode each validation fold using the train fold
-                for train_idx, valid_idx in kf.split(df):
-                    # Get train and validation sets
-                    train_df = df.iloc[train_idx]
-                    valid_df = df.iloc[valid_idx]
-                    
-                    # Calculate mapping from train data
-                    train_mapping = self._calculate_mapping(train_df, col, target)
-                    
-                    # Apply to validation fold
-                    for cat, val in train_mapping.items():
-                        mask = valid_df[col] == cat
-                        if mask.any():
-                            df_encoded.loc[valid_df.index[mask], col + '_encoded'] = val
-                    
-                    # Handle unknown categories in validation data
-                    unknown_mask = ~valid_df[col].isin(train_mapping.keys())
-                    if unknown_mask.any():
-                        if self.handle_unknown == 'error':
-                            unknown_cats = valid_df.loc[unknown_mask, col].unique()
-                            raise ValueError(f"Found unknown categories in column {col}: {unknown_cats}")
-                        elif self.handle_unknown == 'value':
-                            df_encoded.loc[valid_df.index[unknown_mask], col + '_encoded'] = self.target_mean
-                
-                # Calculate final mapping from all data for future transforms
-                self.mapping[col] = self._calculate_mapping(df, col, target)
+        for col in self.input_columns:
+            # Group by the categorical column and calculate stats
+            stats = df.groupby(col)[target].agg(['count', 'mean'])
+            # Apply smoothing
+            smoothed_mean = (
+                stats['count'] * stats['mean'] + self.smoothing * self.target_mean
+            ) / (stats['count'] + self.smoothing)
+            # Filter out categories with too few samples
+            smoothed_mean = smoothed_mean[stats['count'] >= self.min_samples_leaf]
+            # Create mapping
+            self.mapping[col] = smoothed_mean.to_dict()
         
         self.is_fitted = True
         
@@ -556,91 +474,6 @@ class TargetEncoderWrapper(EncoderWrapper):
         Returns
         -------
         pd.DataFrame
-            The transformed dataframe with cross-validated target encoding if cv > 1.
+            The transformed dataframe.
         """
-        if self.cv <= 1:
-            return self.fit(df, target).transform(df)
-        
-        # If using cross-validation, we need to perform a special fit-transform 
-        # to prevent target leakage
-        
-        # Determine columns to encode
-        if self.columns is None:
-            self.input_columns = df.select_dtypes(include=['object', 'category']).columns.tolist()
-        else:
-            self.input_columns = [col for col in self.columns if col in df.columns]
-        
-        # Remove target from columns to encode if present
-        if target in self.input_columns:
-            self.input_columns.remove(target)
-        
-        if not self.input_columns:
-            self.is_fitted = True
-            return df.copy()
-        
-        # Calculate global target mean
-        self.target_mean = df[target].mean()
-        
-        # Create a copy of the dataframe to avoid modifying the original
-        result = df.copy()
-        
-        try:
-            from sklearn.model_selection import KFold
-        except ImportError:
-            raise ImportError(
-                "scikit-learn is not installed. "
-                "Install it with 'pip install scikit-learn'."
-            )
-        
-        kf = KFold(n_splits=self.cv, shuffle=self.shuffle, random_state=self.random_state)
-        
-        # Calculate final mapping from all data for future transforms
-        self.mapping = {}
-        
-        # Encode each column
-        for col in self.input_columns:
-            # Calculate final mapping from all data for future transforms
-            self.mapping[col] = self._calculate_mapping(df, col, target)
-            
-            # Create a Series to hold the encoded values
-            encoded_values = pd.Series(index=df.index, dtype=float)
-            
-            # Perform cross-validated encoding
-            for train_idx, valid_idx in kf.split(df):
-                # Get train and validation sets
-                train_df = df.iloc[train_idx]
-                valid_df = df.iloc[valid_idx]
-                
-                # Calculate mapping from train data
-                train_mapping = self._calculate_mapping(train_df, col, target)
-                
-                # Apply to validation fold
-                for cat, val in train_mapping.items():
-                    mask = valid_df[col] == cat
-                    if mask.any():
-                        encoded_values.loc[valid_df.index[mask]] = val
-                
-                # Handle unknown categories in validation data
-                unknown_mask = ~valid_df[col].isin(train_mapping.keys())
-                if unknown_mask.any():
-                    if self.handle_unknown == 'error':
-                        unknown_cats = valid_df.loc[unknown_mask, col].unique()
-                        raise ValueError(f"Found unknown categories in column {col}: {unknown_cats}")
-                    elif self.handle_unknown == 'value':
-                        encoded_values.loc[valid_df.index[unknown_mask]] = self.target_mean
-            
-            # Handle missing values
-            missing_mask = df[col].isna()
-            if missing_mask.any():
-                if self.handle_missing == 'error':
-                    raise ValueError(f"Found missing values in column {col}")
-                elif self.handle_missing == 'value':
-                    encoded_values[missing_mask] = self.target_mean
-            
-            # Replace the original column with the encoded one
-            result[col] = encoded_values
-        
-        self.is_fitted = True
-        self.output_columns = self.input_columns
-        
-        return result
+        return self.fit(df, target).transform(df)

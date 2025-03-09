@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
+from freamon.explainability.shap_explainer import ShapExplainer, ShapIQExplainer
+
 
 class Model:
     """
@@ -184,9 +186,18 @@ class Model:
         
         return self.model.predict_proba(X)
     
-    def get_feature_importance(self) -> pd.Series:
+    def get_feature_importance(self, method: str = 'native', X: Optional[pd.DataFrame] = None) -> pd.Series:
         """
         Get the feature importance from the model.
+        
+        Parameters
+        ----------
+        method : str, default='native'
+            The method to use for computing feature importance.
+            Options: 'native', 'shap', 'shapiq'
+        X : Optional[pd.DataFrame], default=None
+            The data to use for computing SHAP values.
+            Required if method is 'shap' or 'shapiq'.
         
         Returns
         -------
@@ -196,6 +207,80 @@ class Model:
         if not self.is_fitted:
             raise ValueError("Model is not fitted. Call fit() first.")
         
+        # Using SHAP to compute feature importance
+        if method == 'shap':
+            if X is None:
+                raise ValueError("X must be provided when method='shap'")
+            
+            try:
+                # Create and fit SHAP explainer
+                model_type = 'tree' if self.model_type in ['lightgbm', 'xgboost', 'catboost'] else 'kernel'
+                explainer = ShapExplainer(self.model, model_type=model_type)
+                explainer.fit(X)
+                
+                # Compute SHAP values
+                shap_values = explainer.explain(X)
+                
+                # Calculate global feature importance (mean absolute SHAP value)
+                if isinstance(shap_values, pd.DataFrame):
+                    # For single output models
+                    importance = shap_values.abs().mean()
+                else:
+                    # For multi-class models
+                    importance_list = []
+                    for class_idx, df in enumerate(shap_values):
+                        if isinstance(df, pd.DataFrame):
+                            class_df = df[df['_class'] == class_idx].drop('_class', axis=1)
+                            importance_list.append(class_df.abs().mean())
+                    importance = pd.concat(importance_list).groupby(level=0).mean()
+                
+                return importance.sort_values(ascending=False)
+            
+            except ImportError:
+                print("Warning: shap package not available. Falling back to native importance.")
+                return self._get_native_importance()
+        
+        # Using ShapIQ to compute feature importance with interactions
+        elif method == 'shapiq':
+            if X is None:
+                raise ValueError("X must be provided when method='shapiq'")
+            
+            try:
+                # Create and fit ShapIQ explainer
+                explainer = ShapIQExplainer(self.model, max_order=2)
+                explainer.fit(X)
+                
+                # Compute interaction values (using a small subset to be more efficient)
+                sample_size = min(100, len(X))  # Use at most 100 samples for efficiency
+                sample_indices = np.random.choice(len(X), sample_size, replace=False)
+                sample_X = X.iloc[sample_indices]
+                
+                interactions = explainer.explain(sample_X)
+                
+                # Extract first-order effects (main effects)
+                main_effects = interactions.get_order(1)
+                
+                # Calculate global feature importance (mean absolute main effect)
+                importance_values = np.abs(main_effects.values).mean(axis=0)
+                
+                # Create Series with feature names
+                importance = pd.Series(importance_values, index=X.columns)
+                
+                return importance.sort_values(ascending=False)
+            
+            except ImportError:
+                print("Warning: shapiq package not available. Falling back to native importance.")
+                return self._get_native_importance()
+        
+        # Using native feature importance from the model
+        elif method == 'native':
+            return self._get_native_importance()
+        
+        else:
+            raise ValueError(f"Unknown method: {method}. Options: 'native', 'shap', 'shapiq'")
+    
+    def _get_native_importance(self) -> pd.Series:
+        """Get the native feature importance from the model."""
         # Different models have different feature importance attributes
         if self.model_type == 'sklearn':
             if hasattr(self.model, 'feature_importances_'):

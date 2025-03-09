@@ -8,9 +8,10 @@ This document outlines the planned development phases and milestones for the Fre
 - [x] Missing value analysis and handling
 - [x] Outlier detection
 - [x] Data type analysis
-- [ ] Duplicate detection
-- [ ] Cardinality analysis
-- [ ] HTML report generation
+- [x] Duplicate detection
+- [x] Cardinality analysis
+- [x] HTML report generation
+- [x] Data drift detection
 
 ### Utils Module
 - [x] Dataframe type handling
@@ -114,9 +115,10 @@ This document outlines the planned development phases and milestones for the Fre
 ## Phase 4: User Experience & Integration
 
 ### Pipeline Building
-- [ ] Unified pipeline interface
-- [ ] Pipeline persistence
-- [ ] Pipeline visualization
+- [x] Unified pipeline interface
+- [x] Pipeline persistence
+- [x] Pipeline visualization
+- [x] Interactive HTML reports
 
 ### Interactive Dashboards
 - [ ] Web-based dashboard for data exploration

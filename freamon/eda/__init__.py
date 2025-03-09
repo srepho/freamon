@@ -17,6 +17,8 @@ from freamon.eda.time_series import (
     analyze_autocorrelation,
     analyze_seasonality,
 )
+from freamon.eda.report import generate_html_report
+from freamon.eda.explainability_report import generate_interaction_report
 
 __all__ = [
     "EDAAnalyzer",
@@ -28,4 +30,6 @@ __all__ = [
     "analyze_timeseries",
     "analyze_autocorrelation",
     "analyze_seasonality",
+    "generate_html_report",
+    "generate_interaction_report",
 ]
