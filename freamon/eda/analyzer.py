@@ -22,6 +22,7 @@ from freamon.eda.time_series import (
     analyze_timeseries,
     analyze_seasonality,
 )
+from freamon.eda.multivariate import analyze_multivariate
 from freamon.eda.report import generate_html_report
 
 
@@ -213,9 +214,10 @@ class EDAAnalyzer:
                 col_result = analyze_datetime(self.df, col)
             else:
                 # Try to determine type and analyze
-                if pd.api.types.is_numeric_dtype(self.df[col]):
+                dtype = self.df[col].dtype
+                if np.issubdtype(dtype, np.number):
                     col_result = analyze_numeric(self.df, col, bins=bins)
-                elif pd.api.types.is_datetime64_dtype(self.df[col]):
+                elif np.issubdtype(dtype, np.datetime64):
                     col_result = analyze_datetime(self.df, col)
                 else:
                     col_result = analyze_categorical(self.df, col, max_categories=max_categories)
@@ -413,10 +415,92 @@ class EDAAnalyzer:
         
         print(f"Report saved to {output_path}")
     
+    def analyze_multivariate(
+        self,
+        columns: Optional[List[str]] = None,
+        method: Literal['pca', 'tsne', 'correlation_network', 'interaction_heatmap', 'all'] = 'all',
+        n_components: int = 2,
+        scale: bool = True,
+        tsne_perplexity: float = 30.0,
+        tsne_learning_rate: Union[float, str] = 'auto',
+        tsne_n_iter: int = 1000,
+        correlation_threshold: float = 0.5,
+        correlation_method: str = 'pearson',
+        correlation_layout: str = 'spring',
+        max_heatmap_features: int = 20,
+        plot_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Perform multivariate analysis on the specified columns.
+        
+        Parameters
+        ----------
+        columns : Optional[List[str]], default=None
+            The columns to use for analysis. If None, all numeric columns are used.
+        method : Literal['pca', 'tsne', 'correlation_network', 'interaction_heatmap', 'all'], default='all'
+            The analysis method(s) to use.
+        n_components : int, default=2
+            The number of components to extract for PCA and t-SNE.
+        scale : bool, default=True
+            Whether to standardize the data before PCA and t-SNE.
+        tsne_perplexity : float, default=30.0
+            The perplexity parameter for t-SNE.
+        tsne_learning_rate : Union[float, str], default='auto'
+            The learning rate for t-SNE.
+        tsne_n_iter : int, default=1000
+            The number of iterations for t-SNE.
+        correlation_threshold : float, default=0.5
+            Minimum absolute correlation value for the correlation network.
+        correlation_method : str, default='pearson'
+            The correlation method to use ('pearson', 'spearman', or 'kendall').
+        correlation_layout : str, default='spring'
+            The graph layout algorithm for the correlation network.
+        max_heatmap_features : int, default=20
+            Maximum number of features to include in the interaction heatmap.
+        plot_kwargs : Optional[Dict[str, Any]], default=None
+            Additional arguments to pass to the plot functions.
+            
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
+            A dictionary with multivariate analysis results.
+        """
+        # Set columns to analyze
+        if columns is None:
+            columns = self.numeric_columns
+        
+        # Make sure there are enough numeric columns
+        numeric_cols = [col for col in columns if col in self.numeric_columns]
+        if len(numeric_cols) < 2:
+            raise ValueError("At least 2 numeric columns are required for multivariate analysis")
+        
+        # Perform multivariate analysis
+        result = analyze_multivariate(
+            df=self.df,
+            columns=numeric_cols,
+            method=method,
+            n_components=n_components,
+            scale=scale,
+            tsne_perplexity=tsne_perplexity,
+            tsne_learning_rate=tsne_learning_rate,
+            tsne_n_iter=tsne_n_iter,
+            correlation_threshold=correlation_threshold,
+            correlation_method=correlation_method,
+            correlation_layout=correlation_layout,
+            max_heatmap_features=max_heatmap_features,
+            plot_kwargs=plot_kwargs,
+        )
+        
+        # Store results
+        self.analysis_results["multivariate"] = result
+        
+        return result
+        
     def run_full_analysis(
         self,
         output_path: Optional[str] = None,
         title: str = "Exploratory Data Analysis Report",
+        include_multivariate: bool = True,
     ) -> Dict[str, Any]:
         """
         Run a complete analysis and optionally generate a report.
@@ -427,6 +511,8 @@ class EDAAnalyzer:
             The path to save the HTML report. If None, no report is generated.
         title : str, default="Exploratory Data Analysis Report"
             The title of the report.
+        include_multivariate : bool, default=True
+            Whether to include multivariate analysis in the full analysis.
             
         Returns
         -------
@@ -447,6 +533,13 @@ class EDAAnalyzer:
                 self.analyze_time_series()
             except Exception as e:
                 print(f"Warning: Time series analysis failed: {e}")
+        
+        # Run multivariate analysis if requested
+        if include_multivariate and len(self.numeric_columns) >= 2:
+            try:
+                self.analyze_multivariate()
+            except Exception as e:
+                print(f"Warning: Multivariate analysis failed: {e}")
         
         # Generate report if requested
         if output_path is not None:

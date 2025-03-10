@@ -2,11 +2,20 @@
 Utilities for working with different types of dataframes.
 """
 import re
+import os
+import math
+import time
+import logging
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Callable, Iterator, TypeVar
 
 import numpy as np
 import pandas as pd
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
 
 
 def check_dataframe_type(df: Any) -> str:
@@ -656,15 +665,21 @@ def _detect_polars_datetime(
         if min_val is not None and max_val is not None and min_val >= min_timestamp and max_val <= max_timestamp:
             # Try converting to datetime - handle different Polars versions
             try:
-                # For newer Polars versions
+                # Try the most recent API first (Polars 0.19+)
                 df = df.with_columns([
                     pl.col(col).cast(pl.Int64).cast(pl.Datetime, time_unit='s')
                 ])
             except TypeError:
-                # For older Polars versions that don't accept time_unit
-                df = df.with_columns([
-                    pl.from_epoch(pl.col(col).cast(pl.Int64))
-                ])
+                try:
+                    # Try intermediate API (Polars 0.16+)
+                    df = df.with_columns([
+                        pl.col(col).cast(pl.Int64).dt.with_time_unit('s')
+                    ])
+                except (TypeError, AttributeError):
+                    # Fallback for older Polars versions
+                    df = df.with_columns([
+                        pl.from_epoch(pl.col(col).cast(pl.Int64))
+                    ])
     
     return df
 
@@ -716,4 +731,436 @@ def _convert_to_polars_dateformat(strptime_format: str) -> str:
     for python_fmt, polars_fmt in mapping.items():
         strptime_format = strptime_format.replace(python_fmt, polars_fmt)
     
+    return strptime_format
+
+
+def process_in_chunks(
+    df: Union[pd.DataFrame, Any],
+    func: Callable[[Union[pd.DataFrame, Any]], T],
+    chunk_size: int = 10000,
+    axis: int = 0,
+    combine_func: Optional[Callable[[List[T]], T]] = None,
+    show_progress: bool = True,
+) -> T:
+    """
+    Process a large dataframe in chunks to avoid memory issues.
+    
+    Parameters
+    ----------
+    df : Union[pd.DataFrame, Any]
+        The dataframe to process. Can be pandas, polars, or dask.
+    func : Callable[[Union[pd.DataFrame, Any]], T]
+        The function to apply to each chunk. Must take a dataframe as input.
+    chunk_size : int, default=10000
+        The number of rows/columns to process in each chunk.
+    axis : int, default=0
+        The axis along which to split the dataframe. 0 for row-wise, 1 for column-wise.
+    combine_func : Optional[Callable[[List[T]], T]], default=None
+        Function to combine the results from each chunk. If None, results are returned as a list.
+    show_progress : bool, default=True
+        Whether to show progress information while processing.
+        
+    Returns
+    -------
+    T
+        The combined result of processing all chunks.
+        
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> # Create a large dataframe
+    >>> df = pd.DataFrame(np.random.rand(100000, 10))
+    >>> # Process in chunks of 10000 rows
+    >>> def compute_mean(chunk):
+    ...     return chunk.mean()
+    >>> # Combine results by averaging
+    >>> def combine_means(means_list):
+    ...     return pd.concat(means_list).mean()
+    >>> result = process_in_chunks(df, compute_mean, 10000, combine_func=combine_means)
+    """
+    df_type = check_dataframe_type(df)
+    
+    # For Dask dataframes, let Dask handle the chunking
+    if df_type == "dask":
+        import dask.dataframe as dd
+        if not isinstance(df, dd.DataFrame):
+            raise TypeError("Expected a Dask DataFrame")
+        
+        # Compute result directly - Dask will handle chunking internally
+        result = func(df)
+        
+        # Materialize if needed
+        if isinstance(result, dd.DataFrame) or isinstance(result, dd.Series):
+            return result.compute()
+        return result
+    
+    # For Pandas and Polars, manually chunk the data
+    if axis == 0:
+        # Row-wise chunking
+        n_rows = len(df)
+        n_chunks = math.ceil(n_rows / chunk_size)
+        
+        if show_progress:
+            logger.info(f"Processing {n_rows} rows in {n_chunks} chunks of size {chunk_size}")
+        
+        results = []
+        for i in range(n_chunks):
+            start_idx = i * chunk_size
+            end_idx = min((i + 1) * chunk_size, n_rows)
+            
+            if show_progress:
+                logger.info(f"Processing chunk {i+1}/{n_chunks} (rows {start_idx}-{end_idx})")
+            
+            start_time = time.time()
+            
+            if df_type == "pandas":
+                chunk = df.iloc[start_idx:end_idx]
+            elif df_type == "polars":
+                chunk = df.slice(start_idx, end_idx - start_idx)
+            
+            result = func(chunk)
+            results.append(result)
+            
+            if show_progress:
+                elapsed = time.time() - start_time
+                logger.info(f"Chunk {i+1} processed in {elapsed:.2f} seconds")
+    else:
+        # Column-wise chunking
+        if df_type == "pandas":
+            columns = df.columns.tolist()
+        elif df_type == "polars":
+            columns = df.columns
+        
+        n_cols = len(columns)
+        n_chunks = math.ceil(n_cols / chunk_size)
+        
+        if show_progress:
+            logger.info(f"Processing {n_cols} columns in {n_chunks} chunks of size {chunk_size}")
+        
+        results = []
+        for i in range(n_chunks):
+            start_idx = i * chunk_size
+            end_idx = min((i + 1) * chunk_size, n_cols)
+            
+            if show_progress:
+                logger.info(f"Processing chunk {i+1}/{n_chunks} (columns {start_idx}-{end_idx})")
+            
+            start_time = time.time()
+            
+            if df_type == "pandas":
+                chunk = df[columns[start_idx:end_idx]]
+            elif df_type == "polars":
+                chunk = df.select(columns[start_idx:end_idx])
+            
+            result = func(chunk)
+            results.append(result)
+            
+            if show_progress:
+                elapsed = time.time() - start_time
+                logger.info(f"Chunk {i+1} processed in {elapsed:.2f} seconds")
+    
+    # Combine results if a combine function is provided
+    if combine_func is not None:
+        return combine_func(results)
+    
+    return results
+
+
+def iterate_chunks(
+    df: Union[pd.DataFrame, Any],
+    chunk_size: int = 10000,
+    axis: int = 0
+) -> Iterator[Union[pd.DataFrame, Any]]:
+    """
+    Iterate through chunks of a dataframe without loading the entire dataframe into memory.
+    
+    Parameters
+    ----------
+    df : Union[pd.DataFrame, Any]
+        The dataframe to iterate through. Can be pandas, polars, or dask.
+    chunk_size : int, default=10000
+        The number of rows/columns in each chunk.
+    axis : int, default=0
+        The axis along which to split the dataframe. 0 for row-wise, 1 for column-wise.
+        
+    Yields
+    ------
+    Union[pd.DataFrame, Any]
+        Chunks of the dataframe.
+        
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> # Create a large dataframe
+    >>> df = pd.DataFrame(np.random.rand(100000, 10))
+    >>> # Process each chunk
+    >>> total_sum = 0
+    >>> for chunk in iterate_chunks(df, chunk_size=20000):
+    ...     # Process chunk
+    ...     total_sum += chunk.sum().sum()
+    >>> total_sum  # doctest: +SKIP
+    500000.0
+    """
+    df_type = check_dataframe_type(df)
+    
+    # For Dask dataframes, use Dask's built-in partitioning
+    if df_type == "dask":
+        import dask.dataframe as dd
+        if not isinstance(df, dd.DataFrame):
+            raise TypeError("Expected a Dask DataFrame")
+        
+        # Set the partition size if needed
+        if df.npartitions < 2:
+            df = df.repartition(npartitions=max(1, len(df) // chunk_size))
+        
+        # Yield each partition
+        for i in range(df.npartitions):
+            yield df.get_partition(i).compute()
+        return
+    
+    # For Pandas and Polars, manually chunk the data
+    if axis == 0:
+        # Row-wise chunking
+        n_rows = len(df)
+        n_chunks = math.ceil(n_rows / chunk_size)
+        
+        for i in range(n_chunks):
+            start_idx = i * chunk_size
+            end_idx = min((i + 1) * chunk_size, n_rows)
+            
+            if df_type == "pandas":
+                yield df.iloc[start_idx:end_idx]
+            elif df_type == "polars":
+                yield df.slice(start_idx, end_idx - start_idx)
+    else:
+        # Column-wise chunking
+        if df_type == "pandas":
+            columns = df.columns.tolist()
+        elif df_type == "polars":
+            columns = df.columns
+        
+        n_cols = len(columns)
+        n_chunks = math.ceil(n_cols / chunk_size)
+        
+        for i in range(n_chunks):
+            start_idx = i * chunk_size
+            end_idx = min((i + 1) * chunk_size, n_cols)
+            
+            if df_type == "pandas":
+                yield df[columns[start_idx:end_idx]]
+            elif df_type == "polars":
+                yield df.select(columns[start_idx:end_idx])
+
+
+def save_to_chunks(
+    df: Union[pd.DataFrame, Any], 
+    output_dir: str, 
+    base_filename: str,
+    chunk_size: int = 100000,
+    file_format: Literal['csv', 'parquet', 'feather'] = 'parquet',
+) -> List[str]:
+    """
+    Save a large dataframe to disk in chunks.
+    
+    Parameters
+    ----------
+    df : Union[pd.DataFrame, Any]
+        The dataframe to save. Can be pandas, polars, or dask.
+    output_dir : str
+        The directory where chunk files will be saved.
+    base_filename : str
+        The base filename for the chunks.
+    chunk_size : int, default=100000
+        The number of rows in each chunk.
+    file_format : Literal['csv', 'parquet', 'feather'], default='parquet'
+        The file format to use for saving.
+        
+    Returns
+    -------
+    List[str]
+        A list of paths to the saved chunk files.
+        
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> import tempfile
+    >>> # Create a large dataframe
+    >>> df = pd.DataFrame(np.random.rand(300000, 10))
+    >>> # Save to chunks in a temporary directory
+    >>> with tempfile.TemporaryDirectory() as tmpdirname:
+    ...     chunk_files = save_to_chunks(df, tmpdirname, 'large_data', chunk_size=100000)
+    ...     len(chunk_files)  # Number of chunk files
+    3
+    """
+    df_type = check_dataframe_type(df)
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # For Dask dataframes, use Dask's built-in save methods with partitioning
+    if df_type == "dask":
+        import dask.dataframe as dd
+        if not isinstance(df, dd.DataFrame):
+            raise TypeError("Expected a Dask DataFrame")
+        
+        # Repartition to desired chunk size
+        if chunk_size > 0:
+            df = df.repartition(npartitions=max(1, len(df) // chunk_size))
+        
+        # Save based on file format
+        if file_format == 'csv':
+            output_path = os.path.join(output_dir, f"{base_filename}-*.csv")
+            df.to_csv(output_path, index=False)
+        elif file_format == 'parquet':
+            output_path = os.path.join(output_dir, base_filename)
+            df.to_parquet(output_path, write_index=False)
+        elif file_format == 'feather':
+            # Dask doesn't support feather natively, convert to pandas first
+            chunks = [part.compute() for part in df.partitions]
+            chunk_files = []
+            for i, chunk in enumerate(chunks):
+                chunk_path = os.path.join(output_dir, f"{base_filename}_{i:05d}.feather")
+                chunk.to_feather(chunk_path)
+                chunk_files.append(chunk_path)
+            return chunk_files
+        
+        # Return the list of files created
+        import glob
+        return sorted(glob.glob(os.path.join(output_dir, f"{base_filename}*")))
+    
+    # For Pandas and Polars, manually save chunks
+    chunk_files = []
+    
+    for i, chunk in enumerate(iterate_chunks(df, chunk_size=chunk_size)):
+        # Determine chunk filename
+        chunk_filename = f"{base_filename}_{i:05d}.{file_format}"
+        chunk_path = os.path.join(output_dir, chunk_filename)
+        
+        # Save the chunk based on dataframe type and file format
+        if df_type == "pandas":
+            if file_format == 'csv':
+                chunk.to_csv(chunk_path, index=False)
+            elif file_format == 'parquet':
+                chunk.to_parquet(chunk_path, index=False)
+            elif file_format == 'feather':
+                chunk.to_feather(chunk_path)
+        elif df_type == "polars":
+            if file_format == 'csv':
+                chunk.write_csv(chunk_path)
+            elif file_format == 'parquet':
+                chunk.write_parquet(chunk_path)
+            elif file_format == 'feather':
+                chunk.write_ipc(chunk_path)  # Polars uses IPC for feather format
+        
+        chunk_files.append(chunk_path)
+        
+    return chunk_files
+
+
+def load_from_chunks(
+    input_dir: str,
+    pattern: str,
+    file_format: Literal['csv', 'parquet', 'feather'] = 'parquet',
+    combine: bool = True,
+    output_type: Literal['pandas', 'polars', 'dask'] = 'pandas',
+) -> Union[pd.DataFrame, Any, List[Any]]:
+    """
+    Load a dataframe from chunk files on disk.
+    
+    Parameters
+    ----------
+    input_dir : str
+        The directory containing the chunk files.
+    pattern : str
+        The pattern to match chunk files (e.g., 'large_data_*.parquet').
+    file_format : Literal['csv', 'parquet', 'feather'], default='parquet'
+        The file format of the chunks.
+    combine : bool, default=True
+        Whether to combine chunks into a single dataframe or return a list.
+    output_type : Literal['pandas', 'polars', 'dask'], default='pandas'
+        The type of dataframe to return.
+        
+    Returns
+    -------
+    Union[pd.DataFrame, Any, List[Any]]
+        The loaded dataframe or list of dataframes.
+        
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> import tempfile
+    >>> import os
+    >>> # Create a large dataframe
+    >>> df = pd.DataFrame(np.random.rand(300000, 10))
+    >>> # Save to chunks and reload
+    >>> with tempfile.TemporaryDirectory() as tmpdirname:
+    ...     chunk_files = save_to_chunks(df, tmpdirname, 'large_data', chunk_size=100000)
+    ...     loaded_df = load_from_chunks(tmpdirname, 'large_data_*.parquet')
+    ...     loaded_df.shape == df.shape
+    True
+    """
+    import glob
+    
+    # Find all matching files
+    pattern_path = os.path.join(input_dir, pattern)
+    chunk_files = sorted(glob.glob(pattern_path))
+    
+    if not chunk_files:
+        raise ValueError(f"No files found matching pattern: {pattern_path}")
+    
+    # For Dask output, use Dask's read methods directly
+    if output_type == 'dask':
+        try:
+            import dask.dataframe as dd
+        except ImportError:
+            raise ImportError("dask is not installed. Install it with 'pip install dask[dataframe]'.")
+        
+        if file_format == 'csv':
+            return dd.read_csv(pattern_path)
+        elif file_format == 'parquet':
+            return dd.read_parquet(input_dir)
+        elif file_format == 'feather':
+            # Load each feather file and concatenate
+            dfs = [dd.from_pandas(pd.read_feather(f), npartitions=1) for f in chunk_files]
+            return dd.concat(dfs)
+    
+    # For Pandas and Polars, load each file
+    chunks = []
+    
+    for chunk_path in chunk_files:
+        if output_type == 'pandas':
+            if file_format == 'csv':
+                chunk = pd.read_csv(chunk_path)
+            elif file_format == 'parquet':
+                chunk = pd.read_parquet(chunk_path)
+            elif file_format == 'feather':
+                chunk = pd.read_feather(chunk_path)
+        elif output_type == 'polars':
+            try:
+                import polars as pl
+            except ImportError:
+                raise ImportError("polars is not installed. Install it with 'pip install polars'.")
+            
+            if file_format == 'csv':
+                chunk = pl.read_csv(chunk_path)
+            elif file_format == 'parquet':
+                chunk = pl.read_parquet(chunk_path)
+            elif file_format == 'feather':
+                chunk = pl.read_ipc(chunk_path)
+        
+        chunks.append(chunk)
+    
+    # Return the chunks as is or combine them
+    if not combine:
+        return chunks
+    
+    if output_type == 'pandas':
+        return pd.concat(chunks, ignore_index=True)
+    elif output_type == 'polars':
+        import polars as pl
+        return pl.concat(chunks)
     return strptime_format

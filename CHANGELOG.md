@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2025-03-25
+
+### Added
+- Enhanced multivariate analysis
+  - Added correlation network visualization for identifying feature relationships
+  - Added interactive heatmaps for feature interactions
+  - Added community detection for identifying feature clusters
+  - Improved PCA and t-SNE visualizations
+- Large dataset handling
+  - Added chunk-based processing for handling large datasets efficiently
+  - Implemented functions for processing, iterating, saving, and loading data in chunks
+  - Added integration with Dask for distributed processing
+  - Improved Polars integration with better time unit handling
+
+### Fixed
+- Fixed pandas DeprecationWarning for is_categorical_dtype
+- Fixed Polars integration with time_unit parameter compatibility across versions
+- Improved error handling in multivariate analysis functions
+
+### Documentation
+- Added comprehensive documentation for multivariate analysis features
+- Added documentation for large dataset handling
+- Created example scripts for multivariate analysis and large dataset processing
+
 ## [0.2.3] - 2025-03-20
 
 ### Added
