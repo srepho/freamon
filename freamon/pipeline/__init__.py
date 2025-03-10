@@ -13,6 +13,7 @@ from freamon.pipeline.steps import (
     EvaluationStep,
     ShapIQFeatureEngineeringStep,
 )
+from freamon.model_selection.cv_trainer import CrossValidationTrainingStep
 from freamon.pipeline.visualization import (
     visualize_pipeline,
     generate_interactive_html,
@@ -26,6 +27,7 @@ __all__ = [
     "ModelTrainingStep",
     "EvaluationStep",
     "ShapIQFeatureEngineeringStep",
+    "CrossValidationTrainingStep",
     "visualize_pipeline",
     "generate_interactive_html",
 ]

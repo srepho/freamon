@@ -11,6 +11,12 @@ from freamon.model_selection.splitter import (
 from freamon.model_selection.cross_validation import (
     cross_validate,
     time_series_cross_validate,
+    walk_forward_validation,
+)
+
+from freamon.model_selection.cv_trainer import (
+    CrossValidatedTrainer,
+    CrossValidationTrainingStep,
 )
 
 __all__ = [
@@ -19,4 +25,7 @@ __all__ = [
     "stratified_time_series_split",
     "cross_validate",
     "time_series_cross_validate",
+    "walk_forward_validation",
+    "CrossValidatedTrainer",
+    "CrossValidationTrainingStep",
 ]
