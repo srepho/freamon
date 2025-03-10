@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2025-03-30
+
+### Fixed
+- Fixed multivariate analysis functionality:
+  - Added support for 'both' method parameter to perform PCA and t-SNE together
+  - Updated matplotlib API calls to use current non-deprecated functions
+- Fixed ShapIQ integration with more robust error handling:
+  - Added compatibility with different versions of ShapIQ API
+  - Improved error detection and fallback mechanisms
+  - Enhanced interaction detection with better property checking
+- Fixed Polars integration for datetime detection:
+  - Added support for multiple Polars versions with better conversion strategy
+  - Fixed timestamp conversion with appropriate time units
+- Improved test coverage and mocking for optional dependencies
+
 ## [0.2.5] - 2025-03-28
 
 ### Added
