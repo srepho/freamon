@@ -14,10 +14,8 @@ from freamon.model_selection.cross_validation import (
     walk_forward_validation,
 )
 
-from freamon.model_selection.cv_trainer import (
-    CrossValidatedTrainer,
-    CrossValidationTrainingStep,
-)
+from freamon.model_selection.cv_trainer import CrossValidatedTrainer
+from freamon.model_selection.cv_training_step import CrossValidationTrainingStep
 
 __all__ = [
     "train_test_split",

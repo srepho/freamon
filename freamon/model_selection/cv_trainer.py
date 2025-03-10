@@ -410,7 +410,7 @@ class CrossValidatedTrainer:
                     metrics = calculate_metrics(
                         y_true=y_test, 
                         y_pred=y_pred, 
-                        y_prob=y_prob, 
+                        y_proba=y_prob, 
                         problem_type="classification"
                     )
                 else:
@@ -451,10 +451,21 @@ class CrossValidatedTrainer:
             The model instance
         """
         # Create ModelTrainer
+        if self.model_type == "sklearn":
+            # For sklearn, use a default model based on problem type
+            model_name = "RandomForestClassifier" if self.problem_type == "classification" else "RandomForestRegressor"
+            # Filter out params not applicable to sklearn models
+            filtered_params = {k: v for k, v in params.items() 
+                              if k not in ['early_stopping_rounds']}
+        else:
+            model_name = self.model_type
+            filtered_params = params
+            
         trainer = ModelTrainer(
             model_type=self.model_type,
+            model_name=model_name,
             problem_type=self.problem_type,
-            hyperparameters=params,
+            params=filtered_params,
             random_state=self.random_state
         )
         
@@ -554,14 +565,22 @@ class CrossValidatedTrainer:
             # Use VotingClassifier or VotingRegressor
             models = [model_info['model'] for model_info in self.fold_models]
             
+            # Extract the underlying sklearn model if using our Model wrapper
+            unwrapped_models = []
+            for model in models:
+                if hasattr(model, 'model'):
+                    unwrapped_models.append(model.model)
+                else:
+                    unwrapped_models.append(model)
+            
             if self.problem_type == "classification":
                 self.ensemble_model = VotingClassifier(
-                    estimators=[(f"fold_{i}", model) for i, model in enumerate(models)],
-                    voting="soft" if hasattr(models[0], "predict_proba") else "hard"
+                    estimators=[(f"fold_{i}", model) for i, model in enumerate(unwrapped_models)],
+                    voting="soft" if hasattr(unwrapped_models[0], "predict_proba") else "hard"
                 )
             else:
                 self.ensemble_model = VotingRegressor(
-                    estimators=[(f"fold_{i}", model) for i, model in enumerate(models)]
+                    estimators=[(f"fold_{i}", model) for i, model in enumerate(unwrapped_models)]
                 )
                 
             # Fit the voting ensemble (necessary to make predictions)
@@ -571,15 +590,23 @@ class CrossValidatedTrainer:
             models = [model_info['model'] for model_info in self.fold_models]
             weights = self._calculate_fold_weights()
             
+            # Extract the underlying sklearn model if using our Model wrapper
+            unwrapped_models = []
+            for model in models:
+                if hasattr(model, 'model'):
+                    unwrapped_models.append(model.model)
+                else:
+                    unwrapped_models.append(model)
+            
             if self.problem_type == "classification":
                 self.ensemble_model = VotingClassifier(
-                    estimators=[(f"fold_{i}", model) for i, model in enumerate(models)],
-                    voting="soft" if hasattr(models[0], "predict_proba") else "hard",
+                    estimators=[(f"fold_{i}", model) for i, model in enumerate(unwrapped_models)],
+                    voting="soft" if hasattr(unwrapped_models[0], "predict_proba") else "hard",
                     weights=weights
                 )
             else:
                 self.ensemble_model = VotingRegressor(
-                    estimators=[(f"fold_{i}", model) for i, model in enumerate(models)],
+                    estimators=[(f"fold_{i}", model) for i, model in enumerate(unwrapped_models)],
                     weights=weights
                 )
                 
@@ -589,19 +616,33 @@ class CrossValidatedTrainer:
             # Use StackingClassifier or StackingRegressor
             models = [model_info['model'] for model_info in self.fold_models]
             
+            # Extract the underlying sklearn model if using our Model wrapper
+            unwrapped_models = []
+            for model in models:
+                if hasattr(model, 'model'):
+                    unwrapped_models.append(model.model)
+                else:
+                    unwrapped_models.append(model)
+            
             # Create a simple meta-model
             final_model = self._create_model(self.hyperparameters)
             
+            # Unwrap the final model if needed
+            if hasattr(final_model, 'model'):
+                final_estimator = final_model.model
+            else:
+                final_estimator = final_model
+            
             if self.problem_type == "classification":
                 self.ensemble_model = StackingClassifier(
-                    estimators=[(f"fold_{i}", model) for i, model in enumerate(models)],
-                    final_estimator=final_model,
+                    estimators=[(f"fold_{i}", model) for i, model in enumerate(unwrapped_models)],
+                    final_estimator=final_estimator,
                     cv=5
                 )
             else:
                 self.ensemble_model = StackingRegressor(
-                    estimators=[(f"fold_{i}", model) for i, model in enumerate(models)],
-                    final_estimator=final_model,
+                    estimators=[(f"fold_{i}", model) for i, model in enumerate(unwrapped_models)],
+                    final_estimator=final_estimator,
                     cv=5
                 )
                 
@@ -823,298 +864,5 @@ class CrossValidatedTrainer:
             "ensemble_model": self.ensemble_model,
             "fold_models": self.fold_models
         }
-"""
-
-from freamon.pipeline.steps import PipelineStep
 
 
-class CrossValidationTrainingStep(PipelineStep):
-    """
-    Pipeline step that trains a model using cross-validation.
-    
-    This step extends PipelineStep to provide cross-validated model training
-    within the pipeline framework. It supports different cross-validation
-    strategies and ensemble methods.
-    
-    Attributes
-    ----------
-    model_type : str
-        The type of model to train
-    problem_type : str
-        The type of problem
-    cv_trainer : CrossValidatedTrainer
-        The underlying cross-validated trainer
-    eval_metric : Optional[str]
-        The evaluation metric
-    """
-    
-    def __init__(
-        self,
-        name: str,
-        model_type: str,
-        problem_type: str = "classification",
-        cv_strategy: str = "kfold",
-        n_splits: int = 5,
-        ensemble_method: str = "best",
-        hyperparameters: Optional[Dict[str, Any]] = None,
-        eval_metric: Optional[str] = None,
-        early_stopping_rounds: Optional[int] = None,
-        random_state: int = 42,
-        **cv_kwargs
-    ):
-        """
-        Initialize cross-validation training step.
-        
-        Parameters
-        ----------
-        name : str
-            Name of the step
-        model_type : str
-            The type of model to train ('lightgbm', 'xgboost', etc.)
-        problem_type : str, default='classification'
-            The type of problem ('classification' or 'regression')
-        cv_strategy : str, default='kfold'
-            The cross-validation strategy to use.
-            Options: 'kfold', 'stratified', 'timeseries', 'walk_forward'
-        n_splits : int, default=5
-            Number of cross-validation splits
-        ensemble_method : str, default='best'
-            Method for combining fold models.
-            Options: 'best', 'average', 'weighted', 'stacking'
-        hyperparameters : Optional[Dict[str, Any]], default=None
-            Model hyperparameters
-        eval_metric : Optional[str], default=None
-            Evaluation metric to optimize
-        early_stopping_rounds : Optional[int], default=None
-            Number of rounds for early stopping
-        random_state : int, default=42
-            Random seed for reproducibility
-        **cv_kwargs : Dict[str, Any]
-            Additional kwargs for cross-validation
-        """
-        super().__init__(name)
-        self.model_type = model_type
-        self.problem_type = problem_type
-        self.hyperparameters = hyperparameters or {}
-        self.eval_metric = eval_metric
-        self.random_state = random_state
-        
-        # Initialize cross-validated trainer
-        self.cv_trainer = CrossValidatedTrainer(
-            model_type=model_type,
-            problem_type=problem_type,
-            cv_strategy=cv_strategy,
-            n_splits=n_splits,
-            ensemble_method=ensemble_method,
-            hyperparameters=hyperparameters,
-            eval_metric=eval_metric,
-            early_stopping_rounds=early_stopping_rounds,
-            random_state=random_state,
-            **cv_kwargs
-        )
-    
-    def fit(
-        self, 
-        X: pd.DataFrame, 
-        y: Optional[pd.Series] = None, 
-        **kwargs
-    ) -> "CrossValidationTrainingStep":
-        """
-        Fit the cross-validation training step.
-        
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Feature dataframe
-        y : Optional[pd.Series], default=None
-            Target series
-        **kwargs : Dict[str, Any]
-            Additional parameters
-            
-        Returns
-        -------
-        CrossValidationTrainingStep
-            The fitted step
-            
-        Raises
-        ------
-        ValueError
-            If target is not provided
-        """
-        if y is None:
-            raise ValueError("Target variable y is required for model training")
-        
-        # Train model with cross-validation
-        self.cv_trainer.fit(X, y, **kwargs)
-        
-        self._is_fitted = True
-        return self
-    
-    def transform(
-        self, 
-        X: pd.DataFrame, 
-        **kwargs
-    ) -> pd.DataFrame:
-        """
-        Transform method for the cross-validation step.
-        
-        For CrossValidationTrainingStep, transform returns the dataframe unchanged.
-        
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Feature dataframe
-        **kwargs : Dict[str, Any]
-            Additional parameters
-            
-        Returns
-        -------
-        pd.DataFrame
-            Input dataframe unchanged
-        """
-        return X
-    
-    def fit_transform(
-        self, 
-        X: pd.DataFrame, 
-        y: Optional[pd.Series] = None, 
-        **kwargs
-    ) -> pd.DataFrame:
-        """
-        Fit and transform the cross-validation training step.
-        
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Feature dataframe
-        y : Optional[pd.Series], default=None
-            Target series
-        **kwargs : Dict[str, Any]
-            Additional parameters
-            
-        Returns
-        -------
-        pd.DataFrame
-            Input dataframe unchanged
-        """
-        self.fit(X, y, **kwargs)
-        return self.transform(X, **kwargs)
-    
-    def predict(
-        self, 
-        X: pd.DataFrame, 
-        **kwargs
-    ) -> np.ndarray:
-        """
-        Make predictions with the trained model.
-        
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Feature dataframe
-        **kwargs : Dict[str, Any]
-            Additional parameters
-            
-        Returns
-        -------
-        np.ndarray
-            Predictions
-            
-        Raises
-        ------
-        ValueError
-            If the step is not fitted
-        """
-        if not self._is_fitted:
-            raise ValueError("Step has not been fitted yet")
-        
-        return self.cv_trainer.predict(X)
-    
-    def predict_proba(
-        self, 
-        X: pd.DataFrame, 
-        **kwargs
-    ) -> np.ndarray:
-        """
-        Make probability predictions with the trained model.
-        
-        Only applicable for classification problems.
-        
-        Parameters
-        ----------
-        X : pd.DataFrame
-            Feature dataframe
-        **kwargs : Dict[str, Any]
-            Additional parameters
-            
-        Returns
-        -------
-        np.ndarray
-            Probability predictions
-            
-        Raises
-        ------
-        ValueError
-            If the step is not fitted or not a classifier
-        """
-        if not self._is_fitted:
-            raise ValueError("Step has not been fitted yet")
-        
-        return self.cv_trainer.predict_proba(X)
-    
-    def get_cv_results(self) -> Dict[str, List[float]]:
-        """
-        Get cross-validation results.
-        
-        Returns
-        -------
-        Dict[str, List[float]]
-            Cross-validation metrics for each fold
-            
-        Raises
-        ------
-        ValueError
-            If the step is not fitted
-        """
-        if not self._is_fitted:
-            raise ValueError("Step has not been fitted yet")
-        
-        return self.cv_trainer.get_cv_results()
-    
-    def get_feature_importances(self) -> pd.Series:
-        """
-        Get feature importances from the trained model.
-        
-        Returns
-        -------
-        pd.Series
-            Feature importances
-            
-        Raises
-        ------
-        ValueError
-            If the step is not fitted or feature importances are not available
-        """
-        if not self._is_fitted:
-            raise ValueError("Step has not been fitted yet")
-        
-        return self.cv_trainer.get_feature_importances()
-    
-    def get_models(self) -> Dict[str, Any]:
-        """
-        Get the trained models.
-        
-        Returns
-        -------
-        Dict[str, Any]
-            Dictionary with ensemble model and fold models
-            
-        Raises
-        ------
-        ValueError
-            If the step is not fitted
-        """
-        if not self._is_fitted:
-            raise ValueError("Step has not been fitted yet")
-        
-        return self.cv_trainer.get_models()

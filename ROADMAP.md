@@ -49,33 +49,39 @@ This document outlines the planned development phases and milestones for the Fre
 ## Phase 2: Expanded Functionality
 
 ### EDA Module
-- [ ] Univariate analysis
-  - [ ] Distribution plots for numerical features
-  - [ ] Bar plots for categorical features
-- [ ] Bivariate analysis
-  - [ ] Correlation analysis
-  - [ ] Feature vs. target plots
-- [ ] Multivariate analysis
-  - [ ] PCA visualization
-  - [ ] t-SNE visualization
-- [ ] Time series analysis
-  - [ ] Trend analysis
-  - [ ] Seasonality detection
-  - [ ] Autocorrelation plots
-- [ ] Interactive HTML reports
+- [x] Univariate analysis
+  - [x] Distribution plots for numerical features
+  - [x] Bar plots for categorical features
+- [x] Bivariate analysis
+  - [x] Correlation analysis
+  - [x] Feature vs. target plots
+- [x] Multivariate analysis
+  - [x] PCA visualization
+  - [x] t-SNE visualization
+- [x] Time series analysis
+  - [x] Trend analysis
+  - [x] Seasonality detection
+  - [x] Autocorrelation plots
+- [x] Interactive HTML reports
 
 ### Features Module
 - [x] Automated feature engineering
   - [x] ShapIQ-based interaction detection
   - [x] Automatic creation of interaction features
-- [ ] Polynomial features
-- [ ] Standard interaction terms
-- [ ] Time-based features from datetime columns
+- [x] Time series feature engineering
+  - [x] Automated lag detection and generation
+  - [x] Intelligent rolling window features
+  - [x] Smart differencing features
+  - [x] Multiple time series support
+- [x] Polynomial features
+- [x] Standard interaction terms
+- [x] Time-based features from datetime columns
+- [x] Function to automatically create variables based on differences between date columns
 - [ ] Feature scaling and normalization
-- [ ] Feature selection methods
-  - [ ] Filter methods
-  - [ ] Wrapper methods
-  - [ ] Embedded methods
+- [x] Feature selection methods
+  - [x] Filter methods
+  - [x] Wrapper methods
+  - [x] Embedded methods
 
 ### Large Dataset Handling
 - [ ] Chunking for out-of-core processing
@@ -92,9 +98,15 @@ This document outlines the planned development phases and milestones for the Fre
 - [ ] Ensemble model building
 
 ### Advanced Time Series Support
+- [x] Seasonal decomposition (STL, classical)
+- [x] Stationarity testing (ADF, KPSS)
+- [x] Multiple seasonality detection
+- [x] Feature engineering for time series
+  - [x] Automated lag detection
+  - [x] Intelligent rolling features
+  - [x] Smart differencing
+- [x] Forecast performance evaluation
 - [ ] Forecasting models
-- [ ] Feature engineering for time series
-- [ ] Seasonal decomposition
 - [ ] Anomaly detection
 
 ### Model Explainability
@@ -136,14 +148,53 @@ This document outlines the planned development phases and milestones for the Fre
 - [ ] Interactive examples
 - [ ] Case studies
 
-## Community Feedback & Future Directions
+## Next Steps (v0.2.5+)
 
-We welcome input from users to guide future development priorities. Some areas we're considering:
+### Completed in v0.2.4
+- [x] Added multivariate analysis with correlation network visualization
+- [x] Integrated PCA and t-SNE for dimensionality reduction
+- [x] Implemented chunk-based processing for large datasets
+- [x] Added utilities for saving/loading chunked data
+- [x] Improved Polars integration with enhanced time_unit handling
+- [x] Created example script and documentation for large dataset handling
 
+### Current Focus (v0.2.5)
+- [x] Enhanced time series analysis
+  - [x] Advanced seasonality detection and decomposition (STL, classical)
+  - [x] Stationarity testing with ADF and KPSS tests
+  - [x] Multiple seasonality detection and visualization
+  - [x] Forecast performance evaluation framework
+- [x] Time series feature engineering automation
+  - [x] Intelligent lag feature detection and generation
+  - [x] Auto-detection of optimal rolling window sizes
+  - [x] Smart differencing features based on stationarity analysis
+  - [x] Support for multiple time series (panel data)
+
+### Completed in v0.2.6
+- [x] Feature selection module expansion
+  - [x] Recursive feature elimination with cross-validation
+  - [x] Stability selection implementation
+  - [x] Genetic algorithm-based feature selection
+  - [x] Support for multi-objective feature selection
+  - [x] Time series-specific feature selection methods
+
+### Coming Soon (v0.2.7)
+- CI/CD examples for automated pipeline deployment
+- Enhanced dashboard with interactive visualizations
+
+### Medium-term (v0.3.0)
+- Integrate more hyperparameter tuning strategies
+- Integrate with MLflow and other tracking platforms
+- Create a web-based UI for pipeline configuration
+- Expand the automated feature engineering capabilities
+
+### Long-term (v0.4.0+)
 - Deep learning integration
 - Support for more data sources (databases, APIs, etc.)
 - Deployment helpers
-- Data drift detection
 - Specialized modules for specific industries
+- Automated reporting through visualization dashboards
 
-Please share your feedback and feature requests through GitHub issues or discussions.
+## Community Feedback & Future Directions
+
+We welcome input from users to guide future development priorities. Please share your feedback and feature requests through GitHub issues or discussions.

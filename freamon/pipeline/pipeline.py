@@ -247,6 +247,23 @@ class Pipeline:
         if key not in self._step_outputs:
             raise KeyError(f"Output '{key}' not found. Pipeline may not be fitted yet.")
         return self._step_outputs[key]
+        
+    def get_step(self, step_name: str) -> PipelineStep:
+        """Retrieve a step from the pipeline by name.
+        
+        Args:
+            step_name: Name of the step to retrieve
+            
+        Returns:
+            The pipeline step
+            
+        Raises:
+            ValueError: If the step name is not found
+        """
+        for step in self.steps:
+            if step.name == step_name:
+                return step
+        raise ValueError(f"Step '{step_name}' not found in pipeline")
     
     def save(self, path: Union[str, Path]) -> None:
         """Save the entire pipeline to disk.

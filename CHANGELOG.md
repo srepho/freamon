@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2025-03-28
+
+### Added
+- Cross-validation integration in the pipeline system
+  - Added `CrossValidatedTrainer` for unified CV training
+  - Added `CrossValidationTrainingStep` for pipeline integration
+  - Added support for multiple ensemble methods: best, average, weighted, stacking
+  - Added support for various CV strategies: kfold, stratified, timeseries, walk_forward
+- Enhanced model selection capabilities
+  - Added unified cross-validation interface
+  - Improved support for time series data
+  - Added ensemble model creation from multiple folds
+
+### Fixed
+- Fixed circular import issues in the pipeline system
+- Fixed parameter compatibility with scikit-learn models
+- Improved error handling in cross-validation
+- Fixed feature importance extraction for ensemble models
+
 ## [0.2.4] - 2025-03-25
 
 ### Added

@@ -15,7 +15,8 @@ A package to make data science projects on tabular data easier. Named after the 
 - **Exploratory Data Analysis (EDA):** Statistical analysis and visualizations
 - **Feature Engineering:** 
   - **Standard Features:** Polynomial, interaction, datetime, binned features
-  - **Automatic Interaction Detection:** ShapIQ-based automatic feature engineering
+  - **Automatic Interaction Detection:** ShapIQ-based automatic feature engineering  
+  - **Time Series Feature Engineering:** Automated lag detection, rolling windows, differencing
 - **Categorical Encoding:** 
   - **Basic Encoders:** One-hot, ordinal, target encoding
   - **Advanced Encoders:** Binary, hashing, weight of evidence (WOE) encoding
@@ -70,57 +71,82 @@ pip install -e ".[dev,all]"
 
 ## Quick Start
 
-### Cross-Validated Model Training (New!)
+### Time Series Feature Engineering (New!)
 
 ```python
 import pandas as pd
 import numpy as np
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
-from freamon.model_selection import CrossValidatedTrainer
-from freamon.modeling.metrics import calculate_metrics
+from datetime import datetime, timedelta
+from freamon.features.time_series_engineer import TimeSeriesFeatureEngineer
+from freamon.eda.time_series import analyze_seasonality, analyze_stationarity
 
-# Load data
-data = load_iris()
-X = pd.DataFrame(data.data, columns=data.feature_names)
-y = pd.Series(data.target, name="target")
+# Create a synthetic time series dataset with daily data
+def create_sample_data(n_days=365):
+    start_date = datetime(2021, 1, 1)
+    dates = [start_date + timedelta(days=i) for i in range(n_days)]
+    
+    # Create trend component
+    trend = np.linspace(100, 200, n_days)
+    
+    # Weekly seasonality
+    weekly_seasonality = 15 * np.sin(2 * np.pi * np.arange(n_days) / 7)
+    
+    # Monthly seasonality
+    monthly_seasonality = 30 * np.sin(2 * np.pi * np.arange(n_days) / 30)
+    
+    # Random noise
+    noise = np.random.normal(0, 10, n_days)
+    
+    # Combine components
+    values = trend + weekly_seasonality + monthly_seasonality + noise
+    
+    return pd.DataFrame({'date': dates, 'value': values})
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+# Create the dataset
+df = create_sample_data()
+print(f"Created time series data with {len(df)} observations")
+
+# 1. Analyze the time series
+print("\n1. Time Series Analysis")
+seasonality = analyze_seasonality(df, 'date', 'value')
+print(f"Detected periods: {seasonality['detected_periods']}")
+
+# Check stationarity
+stationarity = analyze_stationarity(df, 'date', 'value')
+print(f"Stationarity status: {stationarity['stationarity_status']}")
+if not stationarity['is_stationary'] and 'recommendations' in stationarity:
+    print("Recommendations:")
+    for rec in stationarity['recommendations']:
+        print(f"- {rec}")
+
+# 2. Automatically engineer time series features
+print("\n2. Automated Feature Engineering")
+ts_engineer = TimeSeriesFeatureEngineer(df, 'date', 'value')
+
+# Add feature creation steps
+result_df = (ts_engineer
+    .create_lag_features(strategy='auto')  # Auto-detect optimal lags
+    .create_rolling_features(
+        metrics=['mean', 'std', 'min', 'max'],
+        auto_detect=True  # Auto-detect optimal window sizes
+    )
+    .create_differential_features()
+    .transform()
 )
 
-# Create and fit trainer with cross-validation
-trainer = CrossValidatedTrainer(
-    model_type="lightgbm",
-    problem_type="classification",
-    cv_strategy="stratified",       # Use stratified CV for classification
-    n_splits=5,                     # 5-fold cross-validation
-    ensemble_method="weighted",     # Weight models by validation performance
-    eval_metric="accuracy",
-    random_state=42
-)
+# Display resulting features
+print(f"Original dataframe shape: {df.shape}")
+print(f"After automatic feature engineering: {result_df.shape}")
+print("\nGenerated features:")
+new_columns = [col for col in result_df.columns if col not in df.columns]
+for col in new_columns[:5]:  # Show first 5 features
+    print(f"- {col}")
+if len(new_columns) > 5:
+    print(f"... and {len(new_columns) - 5} more features")
 
-# Fit with cross-validation
-trainer.fit(X_train, y_train)
-
-# Make predictions with the ensemble model
-y_pred = trainer.predict(X_test)
-y_prob = trainer.predict_proba(X_test)
-
-# Calculate metrics
-metrics = calculate_metrics(y_test, y_pred, y_prob=y_prob, problem_type="classification")
-print(f"Accuracy: {metrics['accuracy']:.4f}")
-print(f"Balanced Accuracy: {metrics['balanced_accuracy']:.4f}")
-print(f"ROC AUC: {metrics['roc_auc']:.4f}")
-
-# Get cross-validation results
-cv_results = trainer.get_cv_results()
-print(f"CV Accuracy: Mean={np.mean(cv_results['accuracy']):.4f}, Std={np.std(cv_results['accuracy']):.4f}")
-
-# Get feature importances (averaged across folds)
-importances = trainer.get_feature_importances()
-print("Top features:", importances.head(3))
+# 3. Use these features for forecasting or classification
+print("\n3. Ready for modeling")
+print("The engineered features can now be used for forecasting or other ML tasks")
 ```
 
 ### LightGBM with Intelligent Hyperparameter Tuning
@@ -291,6 +317,12 @@ print(f"Validation metrics: {metrics}")
   - **drift:** Data drift detection and monitoring
   - **outliers:** Outlier detection and handling
   - **missing_values:** Missing value analysis and imputation
+- **eda:** Exploratory data analysis tools
+  - **time_series:** Enhanced time series analysis, seasonality, stationarity, and forecasting
+- **features:** Feature engineering utilities
+  - **engineer:** Standard feature transformations
+  - **shapiq_engineer:** Automatic feature interaction detection
+  - **time_series_engineer:** Automated time series feature generation
 - **utils:** Utility functions for working with dataframes and encoders
   - **dataframe_utils:** Tools for different dataframe backends and date detection
   - **encoders:** Categorical variable encoding tools with cross-validation support

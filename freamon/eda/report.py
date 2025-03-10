@@ -93,6 +93,14 @@ def generate_html_report(
                 </li>
         """
     
+    if "multivariate" in analysis_results:
+        html += """
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="multivariate-tab" data-bs-toggle="pill" data-bs-target="#multivariate" 
+                    type="button" role="tab" aria-controls="multivariate" aria-selected="false">Multivariate Analysis</button>
+                </li>
+        """
+    
     if "time_series" in analysis_results:
         html += """
                 <li class="nav-item" role="presentation">
@@ -956,6 +964,201 @@ def generate_html_report(
             
             html += """
                                 </div>
+                            </div>
+                        </div>
+            """
+        
+        html += """
+                    </div>
+                </div>
+        """
+    
+    # Multivariate Analysis tab
+    if "multivariate" in analysis_results:
+        html += """
+                <div class="tab-pane fade" id="multivariate" role="tabpanel" aria-labelledby="multivariate-tab">
+                    <div class="section">
+                        <h2>Multivariate Analysis</h2>
+                        <p>
+                            This section explores relationships between multiple variables using dimensionality
+                            reduction techniques like PCA and t-SNE.
+                        </p>
+        """
+        
+        multivariate_results = analysis_results["multivariate"]
+        
+        # PCA analysis
+        if "pca" in multivariate_results:
+            pca_result = multivariate_results["pca"]
+            
+            html += """
+                        <div class="card mb-4">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Principal Component Analysis (PCA)</h5>
+                            </div>
+                            <div class="card-body">
+            """
+            
+            # PCA visualization
+            if "visualization" in pca_result:
+                html += f"""
+                                <div class="row">
+                                    <div class="col-md-12 text-center">
+                                        <img src="data:image/png;base64,{pca_result["visualization"]}" class="plot-img" alt="PCA Visualization">
+                                    </div>
+                                </div>
+                """
+            
+            # PCA metrics
+            html += f"""
+                                <div class="row mt-4">
+                                    <div class="col-md-6">
+                                        <h6>PCA Summary</h6>
+                                        <table class="table table-sm">
+                                            <tbody>
+                                                <tr>
+                                                    <th>Number of Components</th>
+                                                    <td>{pca_result.get("n_components", "N/A")}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>Total Explained Variance</th>
+                                                    <td>{sum(pca_result.get("explained_variance", [0])) * 100:.2f}%</td>
+                                                </tr>
+            """
+            
+            # Add the first few components' variance
+            explained_variance = pca_result.get("explained_variance", [])
+            for i, var in enumerate(explained_variance[:3]):  # Show first 3 components
+                html += f"""
+                                                <tr>
+                                                    <th>PC{i+1} Explained Variance</th>
+                                                    <td>{var * 100:.2f}%</td>
+                                                </tr>
+                """
+            
+            html += """
+                                            </tbody>
+                                        </table>
+                                    </div>
+            """
+            
+            # Feature contributions
+            if "feature_contributions" in pca_result:
+                html += """
+                                    <div class="col-md-6">
+                                        <h6>Top Feature Contributions to PC1</h6>
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Feature</th>
+                                                    <th>Contribution (%)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                """
+                
+                # Get feature contributions for PC1
+                contributions = {}
+                for feature, comps in pca_result["feature_contributions"].items():
+                    if "PC1" in comps:
+                        contributions[feature] = comps["PC1"]
+                
+                # Sort by contribution and display top 5
+                for feature, contrib in sorted(contributions.items(), key=lambda x: x[1], reverse=True)[:5]:
+                    html += f"""
+                                                <tr>
+                                                    <td>{feature}</td>
+                                                    <td>{contrib * 100:.2f}%</td>
+                                                </tr>
+                    """
+                
+                html += """
+                                            </tbody>
+                                        </table>
+                                    </div>
+                """
+            
+            # Loadings visualization
+            if "loadings_visualization" in pca_result and pca_result["loadings_visualization"]:
+                html += f"""
+                                <div class="row mt-4">
+                                    <div class="col-md-12 text-center">
+                                        <h6>Feature Loadings Heatmap</h6>
+                                        <img src="data:image/png;base64,{pca_result["loadings_visualization"]}" class="plot-img" alt="PCA Loadings Heatmap">
+                                    </div>
+                                </div>
+                """
+            
+            html += """
+                            </div>
+                        </div>
+            """
+        
+        # t-SNE analysis
+        if "tsne" in multivariate_results:
+            tsne_result = multivariate_results["tsne"]
+            
+            html += """
+                        <div class="card mb-4">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">t-SNE Analysis</h5>
+                            </div>
+                            <div class="card-body">
+            """
+            
+            # t-SNE visualization
+            if "visualization" in tsne_result:
+                html += f"""
+                                <div class="row">
+                                    <div class="col-md-12 text-center">
+                                        <img src="data:image/png;base64,{tsne_result["visualization"]}" class="plot-img" alt="t-SNE Visualization">
+                                    </div>
+                                </div>
+                """
+            
+            # t-SNE parameters
+            html += f"""
+                                <div class="row mt-4">
+                                    <div class="col-md-6">
+                                        <h6>t-SNE Parameters</h6>
+                                        <table class="table table-sm">
+                                            <tbody>
+                                                <tr>
+                                                    <th>Number of Components</th>
+                                                    <td>{tsne_result.get("n_components", "N/A")}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>Perplexity</th>
+                                                    <td>{tsne_result.get("perplexity", "N/A")}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>Learning Rate</th>
+                                                    <td>{tsne_result.get("learning_rate", "N/A")}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>Iterations</th>
+                                                    <td>{tsne_result.get("n_iter", "N/A")}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="alert alert-info">
+                                            <h6>About t-SNE</h6>
+                                            <p>
+                                                t-SNE is a nonlinear dimensionality reduction technique well-suited for visualizing high-dimensional data.
+                                                Unlike PCA, t-SNE focuses on preserving local structure and revealing clusters.
+                                            </p>
+                                            <p>
+                                                <strong>Note:</strong> t-SNE should be used primarily for visualization, not for general dimensionality reduction
+                                                or as input features for other algorithms.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+            """
+            
+            html += """
                             </div>
                         </div>
             """

@@ -7,10 +7,8 @@ import pytest
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 
-from freamon.model_selection.cv_trainer import (
-    CrossValidatedTrainer,
-    CrossValidationTrainingStep
-)
+from freamon.model_selection.cv_trainer import CrossValidatedTrainer
+from freamon.model_selection.cv_training_step import CrossValidationTrainingStep
 from freamon.pipeline import Pipeline
 
 
@@ -48,7 +46,7 @@ def test_cross_validated_trainer_fit_predict():
     )
     
     trainer = CrossValidatedTrainer(
-        model_type="lightgbm",
+        model_type="sklearn",
         problem_type="classification",
         cv_strategy="kfold",
         n_splits=3,
@@ -108,7 +106,7 @@ def test_cross_validated_trainer_ensemble_methods():
     for method in ensemble_methods:
         # Initialize trainer
         trainer = CrossValidatedTrainer(
-            model_type="lightgbm",
+            model_type="sklearn",
             problem_type="classification",
             cv_strategy="kfold",
             n_splits=3,
@@ -140,7 +138,7 @@ def test_cross_validation_training_step():
     pipeline.add_step(
         CrossValidationTrainingStep(
             name="cv_training",
-            model_type="lightgbm",
+            model_type="sklearn",
             problem_type="classification",
             cv_strategy="kfold",
             n_splits=3,
