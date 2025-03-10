@@ -665,20 +665,20 @@ def _detect_polars_datetime(
         if min_val is not None and max_val is not None and min_val >= min_timestamp and max_val <= max_timestamp:
             # Try converting to datetime - handle different Polars versions
             try:
-                # Try the most recent API first (Polars 0.19+)
+                # Try using from_epoch (most compatible across versions)
                 df = df.with_columns([
-                    pl.col(col).cast(pl.Int64).cast(pl.Datetime, time_unit='s')
+                    pl.from_epoch(pl.col(col).cast(pl.Int64))
                 ])
-            except TypeError:
+            except (TypeError, AttributeError):
                 try:
-                    # Try intermediate API (Polars 0.16+)
+                    # Try alternative method for newer Polars versions
                     df = df.with_columns([
-                        pl.col(col).cast(pl.Int64).dt.with_time_unit('s')
+                        pl.col(col).cast(pl.Int64).cast(pl.Datetime)
                     ])
-                except (TypeError, AttributeError):
-                    # Fallback for older Polars versions
+                except TypeError:
+                    # Fallback with cast to string and then parse
                     df = df.with_columns([
-                        pl.from_epoch(pl.col(col).cast(pl.Int64))
+                        pl.col(col).cast(pl.Int64).cast(pl.Utf8).str.strptime(pl.Datetime, "%s", strict=False)
                     ])
     
     return df

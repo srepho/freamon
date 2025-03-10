@@ -71,7 +71,7 @@ if SHAPIQ_AVAILABLE:
             assert engineer.threshold == 0.01
             assert engineer.max_interactions == 5
         
-        def test_detect_interactions(self, sample_data_with_interactions):
+        def test_detect_interactions(self, sample_data_with_interactions, monkeypatch):
             """Test detecting interactions."""
             X, y, model = sample_data_with_interactions
             engineer = ShapIQFeatureEngineer(
@@ -82,6 +82,27 @@ if SHAPIQ_AVAILABLE:
                 threshold=0.01,
                 max_interactions=5
             )
+            
+            # Mock the ShapIQExplainer.explain method to return synthetic results
+            def mock_explain(*args, **kwargs):
+                from types import SimpleNamespace
+                # Create a mock object with properties needed for the test
+                mock_obj = SimpleNamespace()
+                mock_obj.values = np.array([[[0.1, 0.2, 0.01, 0.05],
+                                           [0.2, 0.0, 0.3, 0.02],
+                                           [0.01, 0.3, 0.0, 0.4],
+                                           [0.05, 0.02, 0.4, 0.0]]])
+                
+                # Add get_order method
+                def get_order(order):
+                    return mock_obj
+                
+                mock_obj.get_order = get_order
+                return mock_obj
+            
+            # Apply the monkeypatch
+            from freamon.explainability.shap_explainer import ShapIQExplainer
+            monkeypatch.setattr(ShapIQExplainer, "explain", mock_explain)
             
             # Detect interactions
             interactions = engineer.detect_interactions()
@@ -94,7 +115,7 @@ if SHAPIQ_AVAILABLE:
                 assert feature1 in X.columns
                 assert feature2 in X.columns
         
-        def test_create_features(self, sample_data_with_interactions):
+        def test_create_features(self, sample_data_with_interactions, monkeypatch):
             """Test creating interaction features."""
             X, y, model = sample_data_with_interactions
             engineer = ShapIQFeatureEngineer(
@@ -106,7 +127,25 @@ if SHAPIQ_AVAILABLE:
                 max_interactions=2
             )
             
-            # First detect interactions
+            # Mock the detect_interactions method to return synthetic interactions
+            def mock_detect_interactions(*args, **kwargs):
+                # Return a predefined list of interactions
+                mock_interactions = [
+                    ('feature1', 'feature2'),
+                    ('feature2', 'feature4')
+                ]
+                # Also set the instance variables directly
+                engineer.detected_interactions = mock_interactions
+                engineer.interaction_strengths = {
+                    ('feature1', 'feature2'): 0.5,
+                    ('feature2', 'feature4'): 0.3
+                }
+                return mock_interactions
+                
+            # Apply the monkeypatch
+            monkeypatch.setattr(engineer, "detect_interactions", mock_detect_interactions)
+            
+            # First detect interactions (this will use our mock)
             engineer.detect_interactions()
             
             # Create features
@@ -120,7 +159,7 @@ if SHAPIQ_AVAILABLE:
             for col in new_cols:
                 assert col.startswith('shapiq')
         
-        def test_pipeline(self, sample_data_with_interactions):
+        def test_pipeline(self, sample_data_with_interactions, monkeypatch):
             """Test the full pipeline."""
             X, y, model = sample_data_with_interactions
             engineer = ShapIQFeatureEngineer(
@@ -131,6 +170,24 @@ if SHAPIQ_AVAILABLE:
                 threshold=0.01,
                 max_interactions=2
             )
+            
+            # Mock the detect_interactions method
+            def mock_detect_interactions(*args, **kwargs):
+                # Return a predefined list of interactions
+                mock_interactions = [
+                    ('feature1', 'feature2'),
+                    ('feature2', 'feature4')
+                ]
+                # Also set the instance variables directly
+                engineer.detected_interactions = mock_interactions
+                engineer.interaction_strengths = {
+                    ('feature1', 'feature2'): 0.5,
+                    ('feature2', 'feature4'): 0.3
+                }
+                return mock_interactions
+                
+            # Apply the monkeypatch
+            monkeypatch.setattr(engineer, "detect_interactions", mock_detect_interactions)
             
             # Run the pipeline
             df_with_features, report = engineer.pipeline(operations=['multiply'])

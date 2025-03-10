@@ -304,7 +304,7 @@ def perform_tsne(
 def analyze_multivariate(
     df: pd.DataFrame,
     columns: Optional[List[str]] = None,
-    method: Literal['pca', 'tsne', 'correlation_network', 'interaction_heatmap', 'all'] = 'all',
+    method: Literal['pca', 'tsne', 'both', 'correlation_network', 'interaction_heatmap', 'all'] = 'all',
     n_components: int = 2,
     scale: bool = True,
     tsne_perplexity: float = 30.0,
@@ -366,7 +366,7 @@ def analyze_multivariate(
         raise ValueError("At least 2 numeric columns are required for multivariate analysis")
     
     # Perform PCA if requested
-    if method in ['pca', 'all']:
+    if method in ['pca', 'both', 'all']:
         result['pca'] = perform_pca(
             df=df,
             columns=columns,
@@ -376,7 +376,7 @@ def analyze_multivariate(
         )
     
     # Perform t-SNE if requested
-    if method in ['tsne', 'all']:
+    if method in ['tsne', 'both', 'all']:
         result['tsne'] = perform_tsne(
             df=df,
             columns=columns,
@@ -548,13 +548,13 @@ def create_correlation_network(
     edges = nx.draw_networkx_edges(
         G, pos,
         edge_color=[G[u][v]['weight'] for u, v in G.edges()],
-        edge_cmap=plt.cm.get_cmap(colormap),
+        edge_cmap=plt.colormaps.get_cmap(colormap),
         edge_vmin=-1, edge_vmax=1,
         **edge_kwargs
     )
     
     # Add colorbar for edge colors
-    sm = plt.cm.ScalarMappable(cmap=plt.cm.get_cmap(colormap), norm=plt.Normalize(-1, 1))
+    sm = plt.cm.ScalarMappable(cmap=plt.colormaps.get_cmap(colormap), norm=plt.Normalize(-1, 1))
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax)
     cbar.set_label('Correlation Strength')
@@ -592,7 +592,7 @@ def create_correlation_network(
         fig2, ax2 = plt.subplots(figsize=figsize)
         
         # Draw nodes colored by community
-        cmap = plt.cm.get_cmap('tab10', max(communities.keys()) + 1)
+        cmap = plt.colormaps.get_cmap('tab10', max(communities.keys()) + 1)
         
         nx.draw_networkx_nodes(
             G, pos,
@@ -607,7 +607,7 @@ def create_correlation_network(
         nx.draw_networkx_edges(
             G, pos,
             edge_color=[G[u][v]['weight'] for u, v in G.edges()],
-            edge_cmap=plt.cm.get_cmap(colormap),
+            edge_cmap=plt.colormaps.get_cmap(colormap),
             edge_vmin=-1, edge_vmax=1,
             **edge_kwargs
         )

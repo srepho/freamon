@@ -131,7 +131,13 @@ class ShapIQFeatureEngineer:
         # Get pairwise interactions (order 2)
         if self.max_order >= 2 and interactions is not None:
             try:
-                pairwise = interactions.get_order(2)
+                # Verify interactions object has get_order method, if not use a different approach
+                if hasattr(interactions, 'get_order'):
+                    pairwise = interactions.get_order(2)
+                else:
+                    # Handle case where get_order is not available
+                    # This fallback assumes interactions is already at order 2 level
+                    pairwise = interactions
                 
                 # Initialize for pairs
                 significant_pairs = []
@@ -142,7 +148,13 @@ class ShapIQFeatureEngineer:
                 n_features = len(feature_names)
                 
                 # Extract interaction values from the first instance
-                interaction_values = np.abs(pairwise.values[0]) if pairwise.values.shape[0] > 0 else np.zeros((n_features, n_features))
+                # Handle different return types from different versions of ShapIQ
+                if hasattr(pairwise, 'values') and hasattr(pairwise.values, 'shape') and pairwise.values.shape[0] > 0:
+                    interaction_values = np.abs(pairwise.values[0]) 
+                elif hasattr(pairwise, 'interaction_values') and pairwise.interaction_values.shape[0] > 0:
+                    interaction_values = np.abs(pairwise.interaction_values[0])
+                else:
+                    interaction_values = np.zeros((n_features, n_features))
                 
                 # Find significant interactions
                 for i in range(n_features):
