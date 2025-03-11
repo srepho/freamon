@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2025-04-01
+
+### Added
+- Classification threshold optimization capabilities:
+  - Added `find_optimal_threshold` function to evaluate and select optimal probability thresholds
+  - Updated `LightGBMModel` to support custom probability thresholds for binary classification
+  - Added threshold-aware predictions with customizable cutoffs
+  - Added utility for optimizing various metrics: F1, precision, recall, accuracy, and more
+  - Added support for visualizing threshold effects on model performance
+  - Added example script demonstrating threshold optimization functionality
+
 ## [0.2.6] - 2025-03-30
 
 ### Fixed

@@ -524,6 +524,8 @@ class HyperparameterTuningStep(PipelineStep):
         categorical_features: Optional[List[str]] = None,
         fixed_params: Optional[Dict[str, Any]] = None,
         progressive_tuning: bool = True,
+        optimize_threshold: bool = False,
+        threshold_metric: str = 'f1',
         random_state: int = 42
     ):
         """Initialize hyperparameter tuning step.
@@ -540,6 +542,8 @@ class HyperparameterTuningStep(PipelineStep):
             categorical_features: List of categorical feature names
             fixed_params: Parameters to fix during tuning
             progressive_tuning: Whether to use progressive tuning (first tune key parameters)
+            optimize_threshold: Whether to automatically optimize classification threshold
+            threshold_metric: Metric to optimize threshold for ('f1', 'precision', 'recall', etc.)
             random_state: Random state for reproducibility
         """
         super().__init__(name)
@@ -559,6 +563,8 @@ class HyperparameterTuningStep(PipelineStep):
         self.categorical_features = categorical_features or []
         self.fixed_params = fixed_params or {}
         self.progressive_tuning = progressive_tuning
+        self.optimize_threshold = optimize_threshold
+        self.threshold_metric = threshold_metric
         self.random_state = random_state
         
         # Will be set during fit
@@ -567,6 +573,7 @@ class HyperparameterTuningStep(PipelineStep):
         self.model = None
         self.feature_importances = None
         self.param_importances = None
+        self.optimal_threshold = None
     
     def fit(self, X: pd.DataFrame, y: Optional[pd.Series] = None, **kwargs) -> HyperparameterTuningStep:
         """Fit the hyperparameter tuning step.
@@ -630,6 +637,34 @@ class HyperparameterTuningStep(PipelineStep):
             
             # Calculate feature importance
             self.feature_importances = self.model.get_feature_importance(method='native')
+            
+            # Optimize classification threshold if requested and it's a binary classification task
+            if (self.optimize_threshold and self.problem_type == "classification" and 
+                isinstance(self.model, LightGBMModel)):
+                
+                # If we have a validation set in kwargs, use it
+                X_val = kwargs.get('val_X', None)
+                y_val = kwargs.get('val_y', None)
+                
+                # If no explicit validation set provided, use a portion of the training data
+                if X_val is None or y_val is None:
+                    from sklearn.model_selection import train_test_split
+                    X_val, _, y_val, _ = train_test_split(
+                        X, y, test_size=0.2, random_state=self.random_state,
+                        stratify=y if self.problem_type == "classification" else None
+                    )
+                
+                try:
+                    # Find optimal threshold
+                    threshold, score, _ = self.model.find_optimal_threshold(
+                        X_val, y_val, metric=self.threshold_metric, set_as_default=True
+                    )
+                    self.optimal_threshold = threshold
+                    print(f"Optimal {self.threshold_metric} threshold: {threshold:.4f} (score: {score:.4f})")
+                except Exception as e:
+                    # Handle any errors during threshold optimization
+                    print(f"Warning: Could not optimize threshold: {str(e)}")
+                    self.optimal_threshold = None
             
         self._is_fitted = True
         return self

@@ -46,6 +46,9 @@ class LightGBMModel:
         Number of early stopping rounds during training.
     random_state : Optional[int], default=None
         Random state for reproducibility.
+    probability_threshold : Optional[float], default=None
+        Classification probability threshold for positive class prediction.
+        If None, uses the default threshold of 0.5.
     
     Attributes
     ----------
@@ -61,6 +64,8 @@ class LightGBMModel:
         The names of the features used for training.
     categorical_features : Optional[List[Union[int, str]]]
         The list of categorical features.
+    probability_threshold : Optional[float]
+        The probability threshold for binary classification.
     """
     
     def __init__(
@@ -74,6 +79,7 @@ class LightGBMModel:
         random_state: Optional[int] = None,
         custom_objective: Optional[Any] = None,
         custom_eval_metric: Optional[Any] = None,
+        probability_threshold: Optional[float] = None,
     ):
         """Initialize the LightGBM model.
         
@@ -104,6 +110,9 @@ class LightGBMModel:
         custom_eval_metric : Optional[Any], default=None
             Custom evaluation metric that takes (y_true, y_pred) and returns (name, value, is_higher_better).
             If provided, it will be used in addition to the metric parameter.
+        probability_threshold : Optional[float], default=None
+            Classification probability threshold for positive class prediction.
+            If None, uses the default threshold of 0.5.
         """
         self.problem_type = problem_type
         self.objective = objective
@@ -114,6 +123,7 @@ class LightGBMModel:
         self.random_state = random_state
         self.custom_objective = custom_objective
         self.custom_eval_metric = custom_eval_metric
+        self.probability_threshold = probability_threshold
         
         # If objective is a callable but custom_objective is None, use it as custom objective
         if callable(objective) and custom_objective is None:
@@ -268,15 +278,22 @@ class LightGBMModel:
     
     def predict(
         self, 
-        X: Union[pd.DataFrame, np.ndarray]
+        X: Union[pd.DataFrame, np.ndarray],
+        threshold: Optional[float] = None
     ) -> np.ndarray:
         """
         Generate predictions for the input data.
+        
+        For classification problems, allows optional probability threshold customization.
         
         Parameters
         ----------
         X : Union[pd.DataFrame, np.ndarray]
             The input features.
+        threshold : Optional[float], default=None
+            Custom probability threshold for binary classification. 
+            If None, uses the instance's threshold if set, otherwise uses 0.5.
+            Ignored for regression or multiclass problems.
         
         Returns
         -------
@@ -286,6 +303,33 @@ class LightGBMModel:
         if not self.is_fitted:
             raise ValueError("Model is not fitted. Call fit() first.")
         
+        # For regression, simply return the predictions
+        if self.problem_type != 'classification':
+            return self.model.predict(X)
+        
+        # For binary classification, apply threshold if needed
+        probas = self.predict_proba(X)
+        
+        # Check if binary classification (2 classes)
+        is_binary = probas.shape[1] == 2 if probas.ndim == 2 else True
+        
+        # Apply custom threshold only for binary classification
+        if is_binary and (threshold is not None or self.probability_threshold is not None):
+            # Use provided threshold, fallback to instance threshold, or default to 0.5
+            active_threshold = threshold if threshold is not None else (
+                self.probability_threshold if self.probability_threshold is not None else 0.5
+            )
+            
+            # Get probabilities for positive class
+            if probas.ndim == 2:
+                positive_proba = probas[:, 1]
+            else:
+                positive_proba = probas
+                
+            # Apply threshold
+            return (positive_proba >= active_threshold).astype(int)
+        
+        # For multiclass or no threshold customization, use standard predict
         return self.model.predict(X)
     
     def predict_proba(
@@ -314,6 +358,93 @@ class LightGBMModel:
             raise ValueError("predict_proba is only applicable for classification problems")
         
         return self.model.predict_proba(X)
+    
+    def find_optimal_threshold(
+        self,
+        X: Union[pd.DataFrame, np.ndarray],
+        y: Union[pd.Series, np.ndarray],
+        metric: Union[str, Callable] = 'f1',
+        thresholds: Optional[Union[int, List[float], np.ndarray]] = 100,
+        set_as_default: bool = False
+    ) -> Tuple[float, float, pd.DataFrame]:
+        """
+        Find the optimal probability threshold for binary classification.
+        
+        Parameters
+        ----------
+        X : Union[pd.DataFrame, np.ndarray]
+            The features to generate predictions on.
+        y : Union[pd.Series, np.ndarray] 
+            The true class labels.
+        metric : Union[str, Callable], default='f1'
+            The metric to optimize. See metrics.find_optimal_threshold for available options.
+        thresholds : Optional[Union[int, List[float], np.ndarray]], default=100
+            The thresholds to evaluate. If integer, generates that many thresholds.
+        set_as_default : bool, default=False
+            Whether to set the found optimal threshold as the model's default threshold.
+        
+        Returns
+        -------
+        Tuple[float, float, pd.DataFrame]
+            A tuple containing:
+            - The optimal threshold value
+            - The score achieved at the optimal threshold
+            - A DataFrame with threshold values and resulting metric scores
+            
+        Raises
+        ------
+        ValueError
+            If the model is not fitted or not a binary classification model.
+        
+        Examples
+        --------
+        >>> # Find optimal threshold to maximize F1 score
+        >>> threshold, score, results = model.find_optimal_threshold(X_val, y_val)
+        >>> 
+        >>> # Find optimal threshold to maximize precision and set as default
+        >>> threshold, score, results = model.find_optimal_threshold(
+        ...     X_val, y_val, metric='precision', set_as_default=True
+        ... )
+        >>> 
+        >>> # Make predictions with the optimal threshold
+        >>> y_pred = model.predict(X_test)  # Uses the optimal threshold automatically
+        """
+        if not self.is_fitted:
+            raise ValueError("Model is not fitted. Call fit() first.")
+        
+        if self.problem_type != 'classification':
+            raise ValueError("Threshold optimization is only applicable for classification problems")
+        
+        # Get predicted probabilities
+        y_proba = self.predict_proba(X)
+        
+        # Check if binary classification
+        if y_proba.ndim == 2 and y_proba.shape[1] == 2:
+            # For binary classification, use the probability of the positive class
+            y_proba_pos = y_proba[:, 1]
+        elif y_proba.ndim == 2 and y_proba.shape[1] > 2:
+            raise ValueError("Threshold optimization is only applicable for binary classification")
+        else:
+            # If already 1D array, use as is
+            y_proba_pos = y_proba
+        
+        # Import the threshold optimization function
+        from freamon.modeling.metrics import find_optimal_threshold
+        
+        # Find optimal threshold
+        optimal_threshold, optimal_score, results_df = find_optimal_threshold(
+            y_true=y,
+            y_proba=y_proba_pos,
+            metric=metric,
+            thresholds=thresholds
+        )
+        
+        # Set as default if requested
+        if set_as_default:
+            self.probability_threshold = optimal_threshold
+            logger.info(f"Optimal threshold of {optimal_threshold:.4f} set as default")
+        
+        return optimal_threshold, optimal_score, results_df
     
     def get_feature_importance(
         self, 
@@ -393,6 +524,7 @@ class LightGBMModel:
             'feature_names': self.feature_names,
             'categorical_features': self.categorical_features,
             'is_fitted': self.is_fitted,
+            'probability_threshold': self.probability_threshold,
         }
         
         # Save the model data
@@ -423,6 +555,7 @@ class LightGBMModel:
             problem_type=model_data['problem_type'],
             objective=model_data['objective'],
             metric=model_data['metric'],
+            probability_threshold=model_data.get('probability_threshold'),  # Backward compatibility
         )
         
         # Restore the model state
@@ -440,5 +573,10 @@ class LightGBMModel:
         problem = self.problem_type
         obj = f"objective='{self.objective}'" if self.objective else ""
         params = f"params={len(self.best_params) if self.best_params else 'None'}"
+        threshold = f"threshold={self.probability_threshold}" if self.probability_threshold is not None else ""
         
-        return f"LightGBMModel({status}, {problem}, {obj}, {params})"
+        components = [status, problem, obj, params, threshold]
+        # Filter out empty strings
+        components = [c for c in components if c]
+        
+        return f"LightGBMModel({', '.join(components)})"

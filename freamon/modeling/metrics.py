@@ -1,10 +1,11 @@
 """
 Module for evaluating model performance.
 """
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union, Callable
 
 import numpy as np
 import pandas as pd
+from scipy import interpolate
 
 
 def calculate_metrics(
@@ -145,6 +146,136 @@ def calculate_classification_metrics(
             metrics['log_loss'] = float('nan')
     
     return metrics
+
+
+def find_optimal_threshold(
+    y_true: Union[pd.Series, np.ndarray],
+    y_proba: Union[pd.Series, np.ndarray],
+    metric: Union[str, Callable] = 'f1',
+    thresholds: Optional[Union[int, List[float], np.ndarray]] = 100,
+) -> Tuple[float, float, pd.DataFrame]:
+    """
+    Find the optimal probability threshold for a binary classification problem.
+    
+    Parameters
+    ----------
+    y_true : Union[pd.Series, np.ndarray]
+        The true class labels (0 or 1).
+    y_proba : Union[pd.Series, np.ndarray]
+        The predicted probabilities for the positive class.
+    metric : Union[str, Callable], default='f1'
+        The metric to optimize for. Available options:
+        - 'f1': F1 score (harmonic mean of precision and recall)
+        - 'precision': Precision score
+        - 'recall': Recall score
+        - 'accuracy': Accuracy score
+        - 'balanced_accuracy': Balanced accuracy score
+        - 'f_beta': F-beta score (harmonic mean of precision and recall weighted by beta)
+        - 'precision_recall_product': Product of precision and recall
+        - 'younden_j': Younden's J statistic (sensitivity + specificity - 1)
+        - 'kappa': Cohen's kappa score
+        - 'mcc': Matthews correlation coefficient
+        - A custom callable function that takes (y_true, y_pred) and returns a score to maximize
+    thresholds : Optional[Union[int, List[float], np.ndarray]], default=100
+        The thresholds to evaluate. If an integer, generates that many thresholds linearly spaced
+        between 0 and 1. If a list or array, uses those specific threshold values.
+    
+    Returns
+    -------
+    Tuple[float, float, pd.DataFrame]
+        A tuple containing:
+        - The optimal threshold value
+        - The score achieved at the optimal threshold
+        - A DataFrame with threshold values and resulting metric scores
+    
+    Examples
+    --------
+    >>> # Find optimal threshold to maximize F1 score
+    >>> from freamon.modeling.metrics import find_optimal_threshold
+    >>> threshold, score, results = find_optimal_threshold(y_true, y_proba)
+    >>> 
+    >>> # Find optimal threshold to maximize precision
+    >>> threshold, score, results = find_optimal_threshold(y_true, y_proba, metric='precision')
+    >>> 
+    >>> # Find optimal threshold to maximize a custom metric
+    >>> def custom_metric(y_true, y_pred):
+    >>>     # Return a score to maximize
+    >>>     return 0.3 * precision + 0.7 * recall
+    >>> threshold, score, results = find_optimal_threshold(y_true, y_proba, metric=custom_metric)
+    """
+    try:
+        from sklearn.metrics import (
+            f1_score, precision_score, recall_score, accuracy_score,
+            balanced_accuracy_score, cohen_kappa_score, matthews_corrcoef,
+            fbeta_score, confusion_matrix
+        )
+    except ImportError:
+        raise ImportError(
+            "scikit-learn is not installed. "
+            "Install it with 'pip install scikit-learn'."
+        )
+    
+    # Convert to numpy arrays
+    if isinstance(y_true, pd.Series):
+        y_true = y_true.values
+    if isinstance(y_proba, pd.Series):
+        y_proba = y_proba.values
+    
+    # Generate thresholds if an integer is provided
+    if isinstance(thresholds, int):
+        thresholds = np.linspace(0.01, 0.99, thresholds)
+    
+    # Define metric function based on input
+    if metric == 'f1':
+        metric_func = lambda y_true, y_pred: f1_score(y_true, y_pred, zero_division=0)
+    elif metric == 'precision':
+        metric_func = lambda y_true, y_pred: precision_score(y_true, y_pred, zero_division=0)
+    elif metric == 'recall':
+        metric_func = lambda y_true, y_pred: recall_score(y_true, y_pred, zero_division=0)
+    elif metric == 'accuracy':
+        metric_func = accuracy_score
+    elif metric == 'balanced_accuracy':
+        metric_func = balanced_accuracy_score
+    elif metric == 'f_beta':
+        # Default to f_beta with beta=0.5 (more weight on precision)
+        metric_func = lambda y_true, y_pred: fbeta_score(y_true, y_pred, beta=0.5, zero_division=0)
+    elif metric == 'precision_recall_product':
+        metric_func = lambda y_true, y_pred: (
+            precision_score(y_true, y_pred, zero_division=0) *
+            recall_score(y_true, y_pred, zero_division=0)
+        )
+    elif metric == 'younden_j':
+        def younden_j_metric(y_true, y_pred):
+            tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+            return sensitivity + specificity - 1
+        metric_func = younden_j_metric
+    elif metric == 'kappa':
+        metric_func = cohen_kappa_score
+    elif metric == 'mcc':
+        metric_func = matthews_corrcoef
+    elif callable(metric):
+        metric_func = metric
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
+    
+    # Evaluate each threshold
+    results = []
+    for threshold in thresholds:
+        y_pred = (y_proba >= threshold).astype(int)
+        score = metric_func(y_true, y_pred)
+        results.append({'threshold': threshold, 'score': score})
+    
+    # Convert to DataFrame
+    results_df = pd.DataFrame(results)
+    
+    # Find the optimal threshold
+    best_idx = results_df['score'].argmax()
+    optimal_threshold = results_df.iloc[best_idx]['threshold']
+    optimal_score = results_df.iloc[best_idx]['score']
+    
+    return optimal_threshold, optimal_score, results_df
 
 
 def calculate_regression_metrics(
