@@ -5,7 +5,7 @@ This module provides a high-level interface for training LightGBM models
 with intelligent hyperparameter tuning, custom objectives, advanced callbacks,
 and enhanced model inspection capabilities.
 """
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Callable
 import logging
 import numpy as np
 import pandas as pd

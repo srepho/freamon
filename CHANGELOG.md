@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2025-04-05
+
+### Fixed
+- Added missing `Callable` imports in several modules:
+  - Added to `eda/analyzer.py`, `eda/report.py`, and `data_quality/analyzer.py`
+  - Added to `modeling/lightgbm.py`
+  - Ensures proper type checking and IDE support for function types
+
 ## [0.2.7] - 2025-04-01
 
 ### Added

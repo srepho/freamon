@@ -1,7 +1,7 @@
 """
 Main module for the EDA analyzer class.
 """
-from typing import Any, Dict, List, Optional, Union, Tuple, Literal
+from typing import Any, Dict, List, Optional, Union, Tuple, Literal, Callable
 
 import pandas as pd
 import numpy as np

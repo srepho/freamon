@@ -1,7 +1,7 @@
 """
 Module for data quality analysis and reporting.
 """
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Callable
 
 import pandas as pd
 import numpy as np
