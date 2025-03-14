@@ -182,3 +182,176 @@ class TestTextProcessor:
             bow_df = processor.create_bow_features(df, 'text', max_features=5)
             assert len(bow_df) == len(df)
             assert all(col.startswith('bow_') for col in bow_df.columns)
+            
+    def test_extract_text_statistics(self, sample_text):
+        """Test text statistics extraction."""
+        processor = TextProcessor(use_spacy=False)
+        
+        # Test with a regular text
+        stats = processor.extract_text_statistics(sample_text)
+        
+        # Check that all expected statistics are present
+        assert 'word_count' in stats
+        assert 'char_count' in stats
+        assert 'avg_word_length' in stats
+        assert 'unique_word_ratio' in stats
+        
+        # Check basic validations
+        assert stats['word_count'] > 0
+        assert stats['char_count'] > 0
+        assert stats['avg_word_length'] > 0
+        assert 0 <= stats['unique_word_ratio'] <= 1
+        assert 0 <= stats['uppercase_ratio'] <= 1
+        assert 0 <= stats['digit_ratio'] <= 1
+        assert 0 <= stats['punctuation_ratio'] <= 1
+        
+        # Test with empty string
+        empty_stats = processor.extract_text_statistics("")
+        assert empty_stats['word_count'] == 0
+        assert empty_stats['char_count'] == 0
+        
+    def test_calculate_readability(self, sample_text):
+        """Test readability metrics calculation."""
+        processor = TextProcessor(use_spacy=False)
+        
+        # Test with a regular text
+        metrics = processor.calculate_readability(sample_text)
+        
+        # Check that all expected metrics are present
+        assert 'flesch_reading_ease' in metrics
+        assert 'flesch_kincaid_grade' in metrics
+        assert 'coleman_liau_index' in metrics
+        assert 'automated_readability_index' in metrics
+        
+        # Check value ranges
+        assert 0 <= metrics['flesch_reading_ease'] <= 100
+        assert metrics['flesch_kincaid_grade'] >= 0
+        assert metrics['coleman_liau_index'] >= 0
+        assert metrics['automated_readability_index'] >= 0
+        
+        # Test with empty string
+        empty_metrics = processor.calculate_readability("")
+        assert empty_metrics['flesch_reading_ease'] == 0
+        assert empty_metrics['flesch_kincaid_grade'] == 0
+    
+    def test_extract_keywords_rake(self, sample_df):
+        """Test keyword extraction using RAKE."""
+        processor = TextProcessor(use_spacy=False)
+        
+        # Test with normal text
+        for text in sample_df['text']:
+            keywords = processor.extract_keywords_rake(text, max_keywords=5)
+            
+            # Check that keywords were extracted
+            assert isinstance(keywords, list)
+            
+            # Each keyword should be a tuple of (phrase, score)
+            for keyword in keywords:
+                assert isinstance(keyword, tuple)
+                assert len(keyword) == 2
+                assert isinstance(keyword[0], str)
+                assert isinstance(keyword[1], (int, float))
+        
+        # Test with empty text
+        empty_keywords = processor.extract_keywords_rake("")
+        assert empty_keywords == []
+    
+    def test_analyze_sentiment(self):
+        """Test sentiment analysis."""
+        processor = TextProcessor(use_spacy=False)
+        
+        # Test with positive text
+        positive_text = "This is great! I love it. The product is excellent and amazing."
+        positive_sentiment = processor.analyze_sentiment(positive_text)
+        
+        # Check sentiment metrics
+        assert positive_sentiment['sentiment_score'] > 0
+        assert positive_sentiment['positive_ratio'] > 0
+        assert 0 <= positive_sentiment['positive_ratio'] <= 1
+        assert 0 <= positive_sentiment['negative_ratio'] <= 1
+        assert 0 <= positive_sentiment['neutral_ratio'] <= 1
+        
+        # Test with negative text
+        negative_text = "This is terrible! I hate it. The product is awful and disappointing."
+        negative_sentiment = processor.analyze_sentiment(negative_text)
+        
+        # Check sentiment metrics
+        assert negative_sentiment['sentiment_score'] < 0
+        assert negative_sentiment['negative_ratio'] > 0
+        
+        # Test with neutral text
+        neutral_text = "This is a product. It has features. The color is blue."
+        neutral_sentiment = processor.analyze_sentiment(neutral_text)
+        
+        # Check sentiment metrics - should be mostly neutral
+        assert neutral_sentiment['neutral_ratio'] > 0.5
+        
+        # Test with empty text
+        empty_sentiment = processor.analyze_sentiment("")
+        assert empty_sentiment['sentiment_score'] == 0.0
+        assert empty_sentiment['neutral_ratio'] == 1.0
+    
+    def test_document_similarity(self):
+        """Test document similarity calculation."""
+        processor = TextProcessor(use_spacy=False)
+        
+        # Test identical documents
+        doc1 = "This is a test document about similarity."
+        identical_similarity = processor.calculate_document_similarity(doc1, doc1)
+        assert round(identical_similarity, 8) == 1.0
+        
+        # Test similar documents
+        doc2 = "This is a test document about documents."
+        similar_similarity = processor.calculate_document_similarity(doc1, doc2)
+        assert 0 < similar_similarity < 1.0
+        
+        # Test very different documents
+        doc3 = "Completely unrelated content with no overlap whatsoever."
+        different_similarity = processor.calculate_document_similarity(doc1, doc3)
+        assert different_similarity < similar_similarity
+        
+        # Test different similarity methods
+        jaccard_similarity = processor.calculate_document_similarity(doc1, doc2, method='jaccard')
+        assert 0 <= jaccard_similarity <= 1.0
+        
+        overlap_similarity = processor.calculate_document_similarity(doc1, doc2, method='overlap')
+        assert 0 <= overlap_similarity <= 1.0
+        
+        # Test empty documents
+        empty_similarity = processor.calculate_document_similarity("", "")
+        assert empty_similarity == 0.0
+    
+    def test_create_text_features(self, sample_df):
+        """Test creating combined text features."""
+        processor = TextProcessor(use_spacy=False)
+        
+        # Test with all features enabled
+        features_df = processor.create_text_features(
+            sample_df,
+            'text',
+            include_stats=True,
+            include_readability=True,
+            include_sentiment=True,
+            prefix='test_'
+        )
+        
+        # Check that features were created
+        assert len(features_df) == len(sample_df)
+        assert any(col.startswith('test_stat_') for col in features_df.columns)
+        assert any(col.startswith('test_read_') for col in features_df.columns)
+        assert any(col.startswith('test_sent_') for col in features_df.columns)
+        
+        # Test with specific features disabled
+        stats_only = processor.create_text_features(
+            sample_df,
+            'text',
+            include_stats=True,
+            include_readability=False,
+            include_sentiment=False
+        )
+        
+        # Check that only stats features were created
+        assert len(stats_only) == len(sample_df)
+        assert any(col.startswith('text_stat_') for col in stats_only.columns)
+        assert not any(col.startswith('text_read_') for col in stats_only.columns)
+        assert not any(col.startswith('text_sent_') for col in stats_only.columns)

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2025-04-10
+
+### Added
+- Enhanced text analytics capabilities:
+  - Added text statistics extraction for basic feature engineering
+  - Added readability metrics calculation (Flesch Reading Ease, Flesch-Kincaid Grade Level, etc.)
+  - Added RAKE (Rapid Automatic Keyword Extraction) for keyword extraction
+  - Added lexicon-based sentiment analysis with customizable lexicons
+  - Added document similarity calculation using cosine, Jaccard, and overlap methods
+  - Added comprehensive text feature creation combining multiple analysis methods
+  - Added example script demonstrating text analytics capabilities
+  - Added documentation for text analytics features
+
 ## [0.2.8] - 2025-04-05
 
 ### Fixed
