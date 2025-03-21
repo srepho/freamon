@@ -25,6 +25,100 @@ processed = processor.preprocess_text(
 print(processed)  # "heres some text with mixed case punctuation and numbers like 123"
 ```
 
+## Topic Modeling
+
+### Creating a Topic Model
+
+Extract topics from a collection of documents using Latent Dirichlet Allocation (LDA) or Non-negative Matrix Factorization (NMF):
+
+```python
+# Create an LDA topic model
+lda_model = processor.create_topic_model(
+    texts=documents,  # List of text documents or pandas Series
+    n_topics=5,       # Number of topics to extract
+    method='lda',     # LDA or NMF
+    max_features=1000,  # Max vocabulary size
+    max_df=0.9,       # Ignore terms that appear in >90% of docs
+    min_df=2,         # Ignore terms that appear in <2 docs
+    ngram_range=(1, 2),  # Include single words and bigrams
+    random_state=42
+)
+
+# Print the top words for each topic
+for topic_idx, top_words in lda_model['topics']:
+    print(f"Topic {topic_idx+1}: {' '.join(top_words)}")
+```
+
+### Visualizing Topics
+
+Create visualizations for topic models:
+
+```python
+# Visualize topics with a horizontal bar chart
+processor.plot_topics(lda_model, figsize=(12, 8))
+
+# Get visualization as HTML for notebooks or reports
+html = processor.plot_topics(lda_model, return_html=True)
+```
+
+### Document-Topic Distribution
+
+Get the topic distribution for each document:
+
+```python
+# Get document-topic distribution
+doc_topics = processor.get_document_topics(
+    lda_model,
+    threshold=0.1  # Ignore topic probabilities below this threshold
+)
+
+# Apply topic model to new documents
+new_doc_topics = processor.get_document_topics(
+    lda_model,
+    texts=new_documents
+)
+```
+
+### Finding Optimal Number of Topics
+
+Find the optimal number of topics based on coherence scores:
+
+```python
+optimal = processor.find_optimal_topics(
+    texts=documents,
+    min_topics=2,
+    max_topics=15,
+    step=1,
+    method='lda',
+    coherence_metric='c_v',
+    plot_results=True
+)
+
+print(f"Optimal number of topics: {optimal['optimal_topics']}")
+print(f"Best coherence score: {optimal['best_coherence']}")
+
+# Get the best model
+best_model = optimal['best_model']
+```
+
+### Topic Features for Machine Learning
+
+Include topic features in text feature engineering:
+
+```python
+# Create text features with topic modeling
+features = processor.create_text_features(
+    df,
+    'text',
+    include_stats=True,
+    include_readability=True,
+    include_sentiment=True,
+    include_topics=True,  # Add topic modeling features
+    n_topics=5,
+    topic_method='lda'
+)
+```
+
 ## Text Statistics and Readability
 
 Extract statistical features and readability metrics from text:

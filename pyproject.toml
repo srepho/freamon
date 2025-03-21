@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
-version = "0.3.0"
+version = "0.3.1"
 description = "A package to make data science projects on tabular data easier"
 readme = "README.md"
 authors = [
@@ -48,6 +48,8 @@ all = [
     "dask[dataframe]",
     "shapiq",
     "shap",
+    "gensim",
+    "pyarrow",
 ]
 lightgbm = [
     "lightgbm",
@@ -60,6 +62,11 @@ catboost = [
 ]
 nlp = [
     "spacy",
+    "gensim",
+]
+topic_modeling = [
+    "gensim",
+    "scikit-learn",
 ]
 polars = [
     "polars",

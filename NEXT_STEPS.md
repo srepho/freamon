@@ -2,7 +2,7 @@
 
 ## Project Status
 
-Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.2.0
+Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.0
 
 The package has recently completed several major features:
 - Pipeline system with visualization and persistence
@@ -11,13 +11,34 @@ The package has recently completed several major features:
 - Advanced category encoders (binary, hashing, WOE)
 - LightGBM optimizations and hyperparameter tuning
 - Model calibration and importance calculations
+- Text processing optimizations with multiple backends (pandas, polars, pyarrow)
+- Time series regression capabilities with visualization tools
 - Documentation and examples for all new features
 
 ## Priority Development Tasks
 
 Based on the roadmap and current status, here are the next development priorities:
 
-### 1. EDA Module Enhancements
+### 1. Advanced NLP Capabilities
+
+- **Topic Modeling**
+  - Implement Latent Dirichlet Allocation (LDA) for topic extraction
+  - Add Non-Negative Matrix Factorization (NMF) as alternative algorithm
+  - Create topic coherence metrics and visualization
+  - Add topic-based document clustering
+
+- **Word Embeddings Integration**
+  - Add support for pre-trained word embeddings (Word2Vec, GloVe, FastText)
+  - Implement document-level embeddings for similarity and clustering
+  - Create visualization tools for word and document embeddings
+  - Add embedding-based feature engineering
+
+- **Advanced Text Classification**
+  - Implement pipeline for text classification tasks
+  - Add support for multi-label and hierarchical classification
+  - Create evaluation metrics specific to text classification
+
+### 2. EDA Module Enhancements
 
 - **Multivariate Analysis**
   - Implement PCA visualization for high-dimensional data
@@ -29,7 +50,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Implement decomposition plots (trend, seasonal, residual)
   - Add autocorrelation and partial autocorrelation visualizations
 
-### 2. Feature Selection Methods
+### 3. Feature Selection Methods
 
 - **Filter Methods**
   - Implement chi-square feature selection for categorical features
@@ -43,7 +64,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Implement Lasso and Ridge Regression based feature selection
   - Add regularization-based feature selection for tree models
 
-### 3. Large Dataset Handling
+### 4. Large Dataset Handling
 
 - **Chunking Mechanisms**
   - Implement streaming data processing for large datasets
@@ -53,7 +74,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Add Dask integration for large-scale data processing
   - Implement parallel processing for intensive operations
 
-### 4. AutoML Capabilities
+### 5. AutoML Capabilities
 
 - **Automatic Hyperparameter Optimization**
   - Expand existing LightGBM tuning to other models
@@ -63,7 +84,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Add automatic model selection based on problem type
   - Implement ensemble methods for combining multiple models
 
-### 5. Quality Improvements
+### 6. Quality Improvements
 
 - **Testing**
   - Fix failing tests in test suite
@@ -77,22 +98,24 @@ Based on the roadmap and current status, here are the next development prioritie
 
 ## Bug Fixes and Technical Debt
 
-### Completed Fixes (v0.2.1 patch)
+### Completed Fixes (v0.3.0 patch)
 
-- ✅ Fixed pipeline tests by:
-  - Making FeatureEngineer accept an optional dataframe
-  - Adding fit() method to FeatureEngineer and ModelTrainer
-  - Fixing MockPipelineStep for testing
-  - Improving robustness of test assertions
+- ✅ Enhanced text processing with multiple backends:
+  - Added Polars integration for high-performance string operations
+  - Added PyArrow backend for optimized memory usage
+  - Implemented parallel processing for large datasets
+  - Added batch processing for spaCy operations
+  - Implemented auto-selection of optimal backend based on data size
 
-- ✅ Fixed datetime detection tests by:
-  - Converting DatetimeIndex to Series for assertions
-  - Excluding ID-like columns from timestamp detection
-  - Fixing custom date format tests
+- ✅ Improved time series regression capabilities:
+  - Added helper functions for model creation
+  - Added visualization tools for model evaluation
+  - Added feature importance grouping by feature types
 
 ### Remaining Issues to Address
 
-- Text processing features (CountVectorizer and TfidfVectorizer parameters)
+- Topic modeling integration (planned for v0.3.1)
+- Word embedding integration (planned for v0.3.1)
 - Polars integration (time_unit parameter in datetime conversion)
 - ShapIQ-related tests (graceful handling when library not available)
 - Pipeline visualization (handle FeatureEngineer initialization)
@@ -102,18 +125,18 @@ Based on the roadmap and current status, here are the next development prioritie
 
 ## Release Planning
 
-### Version 0.2.x Patches
+### Version 0.3.x Patches
 
-- Version 0.2.1: Fix failing tests and known bugs
-- Version 0.2.2: Address technical debt and improve documentation
+- Version 0.3.1: Implement advanced NLP capabilities (topic modeling, word embeddings)
+- Version 0.3.2: Address technical debt and improve documentation
 
-### Version 0.3.0
+### Version 0.4.0
 
 - Implement EDA module enhancements
 - Add feature selection methods
 - Improve large dataset handling
 
-### Version 0.4.0
+### Version 0.5.0
 
 - Add AutoML capabilities
 - Implement ensemble methods
@@ -123,10 +146,10 @@ Based on the roadmap and current status, here are the next development prioritie
 
 Contributors can help with:
 
-1. Fixing failing tests
-2. Improving documentation
-3. Adding examples demonstrating features
-4. Implementing new features from the roadmap
+1. Implementing advanced NLP capabilities
+2. Fixing failing tests
+3. Improving documentation
+4. Adding examples demonstrating features
 
 To get started, install the development version:
 

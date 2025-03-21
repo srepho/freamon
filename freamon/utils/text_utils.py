@@ -1,9 +1,15 @@
 """
 Utility functions for text processing.
 """
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Iterable
 import re
 from collections import Counter
+import warnings
+from pathlib import Path
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import io
+import base64
 
 import numpy as np
 import pandas as pd
@@ -1244,6 +1250,592 @@ class TextProcessor:
         
         return results
     
+    def create_topic_model(
+        self,
+        texts: Union[List[str], pd.Series],
+        n_topics: int = 5,
+        method: str = 'lda',
+        max_features: int = 1000,
+        max_df: float = 0.95,
+        min_df: int = 2,
+        ngram_range: Tuple[int, int] = (1, 1),
+        n_top_words: int = 10,
+        random_state: int = 42,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Create a topic model from a list of texts.
+        
+        Parameters
+        ----------
+        texts : Union[List[str], pd.Series]
+            The texts to analyze.
+        n_topics : int, default=5
+            Number of topics to extract.
+        method : str, default='lda'
+            Topic modeling method to use:
+            - 'lda': Latent Dirichlet Allocation
+            - 'nmf': Non-negative Matrix Factorization
+        max_features : int, default=1000
+            Maximum number of features to use.
+        max_df : float, default=0.95
+            Ignore terms that appear in more than this fraction of documents.
+        min_df : int, default=2
+            Ignore terms that appear in fewer than this number of documents.
+        ngram_range : Tuple[int, int], default=(1, 1)
+            The lower and upper boundary of the range of n-values for different n-grams to be extracted.
+        n_top_words : int, default=10
+            Number of top words to extract for each topic.
+        random_state : int, default=42
+            Random state for reproducibility.
+        **kwargs : dict
+            Additional parameters to pass to the topic model.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary containing the topic model, vectorizer, topic-term matrix,
+            document-topic matrix, and top words for each topic.
+        """
+        try:
+            from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+            from sklearn.decomposition import LatentDirichletAllocation, NMF
+        except ImportError:
+            raise ImportError(
+                "scikit-learn is not installed. Install it with 'pip install scikit-learn'."
+            )
+        
+        # Convert to list of strings if pandas Series
+        if isinstance(texts, pd.Series):
+            texts = texts.astype(str).fillna("").tolist()
+        
+        # Clean texts with basic preprocessing
+        cleaned_texts = [
+            self.preprocess_text(
+                text,
+                lowercase=True,
+                remove_punctuation=True,
+                remove_numbers=False,
+                remove_stopwords=True if self.use_spacy else False,
+                lemmatize=True if self.use_spacy else False,
+            )
+            for text in texts
+        ]
+        
+        # Create document-term matrix
+        vectorizer = CountVectorizer(
+            max_features=max_features,
+            max_df=max_df,
+            min_df=min_df,
+            ngram_range=ngram_range,
+            stop_words='english' if not self.use_spacy else None
+        )
+        
+        try:
+            X = vectorizer.fit_transform(cleaned_texts)
+        except ValueError as e:
+            if "empty vocabulary" in str(e).lower():
+                raise ValueError(
+                    "Cannot create topic model: vocabulary is empty. "
+                    "Try reducing min_df or using longer texts."
+                )
+            else:
+                raise e
+        
+        # Choose topic modeling method
+        if method.lower() == 'lda':
+            topic_model = LatentDirichletAllocation(
+                n_components=n_topics,
+                random_state=random_state,
+                **kwargs
+            )
+        elif method.lower() == 'nmf':
+            # For NMF, use TF-IDF instead of raw counts
+            tfidf_vectorizer = TfidfVectorizer(
+                max_features=max_features,
+                max_df=max_df,
+                min_df=min_df,
+                ngram_range=ngram_range,
+                stop_words='english' if not self.use_spacy else None
+            )
+            X = tfidf_vectorizer.fit_transform(cleaned_texts)
+            vectorizer = tfidf_vectorizer
+            
+            topic_model = NMF(
+                n_components=n_topics,
+                random_state=random_state,
+                **kwargs
+            )
+        else:
+            raise ValueError(f"Unknown topic modeling method: {method}. Use 'lda' or 'nmf'.")
+        
+        # Fit model and transform documents
+        topic_term_matrix = topic_model.fit_transform(X)
+        
+        # Get top words for each topic
+        feature_names = vectorizer.get_feature_names_out()
+        topics_words = []
+        
+        for topic_idx, topic in enumerate(topic_model.components_):
+            top_words_idx = topic.argsort()[:-n_top_words-1:-1]
+            top_words = [feature_names[i] for i in top_words_idx]
+            topics_words.append((topic_idx, top_words))
+        
+        # Get document-topic matrix
+        doc_topic_matrix = topic_model.transform(X)
+        
+        # Calculate coherence score if gensim is available
+        coherence_score = None
+        try:
+            import gensim
+            from gensim.models.coherencemodel import CoherenceModel
+            
+            # Tokenize texts
+            tokenized_texts = [text.split() for text in cleaned_texts]
+            
+            # Create gensim dictionary
+            dictionary = gensim.corpora.Dictionary(tokenized_texts)
+            
+            # Extract topics in gensim format (list of top terms for each topic)
+            topics = []
+            for topic_idx, topic in enumerate(topic_model.components_):
+                # Get the top N words for this topic by sorting the weights
+                top_word_indices = topic.argsort()[:-n_top_words-1:-1]
+                topics.append([feature_names[i] for i in top_word_indices])
+            
+            # Calculate coherence
+            coherence_model = CoherenceModel(
+                topics=topics,
+                texts=tokenized_texts,
+                dictionary=dictionary,
+                coherence='c_v'
+            )
+            coherence_score = coherence_model.get_coherence()
+        except ImportError:
+            warnings.warn(
+                "gensim is not installed, topic coherence score will not be calculated. "
+                "Install it with 'pip install gensim'."
+            )
+        except Exception as e:
+            warnings.warn(f"Error calculating coherence score: {str(e)}")
+        
+        return {
+            'model': topic_model,
+            'vectorizer': vectorizer,
+            'topic_term_matrix': topic_term_matrix,
+            'doc_topic_matrix': doc_topic_matrix,
+            'topics': topics_words,
+            'feature_names': feature_names,
+            'coherence_score': coherence_score,
+            'texts': cleaned_texts,
+            'method': method,
+            'n_topics': n_topics
+        }
+    
+    def plot_topics(
+        self, 
+        topic_model_results: Dict[str, Any],
+        figsize: Tuple[int, int] = (12, 8),
+        max_words: int = 10,
+        return_html: bool = False
+    ) -> Optional[str]:
+        """
+        Plot the topics from a topic model.
+        
+        Parameters
+        ----------
+        topic_model_results : Dict[str, Any]
+            The results from create_topic_model.
+        figsize : Tuple[int, int], default=(12, 8)
+            Size of the figure.
+        max_words : int, default=10
+            Maximum number of words to show per topic.
+        return_html : bool, default=False
+            Whether to return the plot as an HTML img tag.
+            
+        Returns
+        -------
+        Optional[str]
+            HTML img tag if return_html is True, otherwise None.
+        """
+        topics = topic_model_results['topics']
+        model_type = topic_model_results['method']
+        n_topics = topic_model_results['n_topics']
+        
+        # Create subplots
+        n_cols = min(3, n_topics)
+        n_rows = (n_topics - 1) // n_cols + 1
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+        axes = axes.flatten() if n_topics > 1 else [axes]
+        
+        # Plot each topic
+        for i, (topic_idx, top_words) in enumerate(topics):
+            if i < len(axes):
+                ax = axes[i]
+                
+                # Get word weights from the model
+                if model_type == 'lda':
+                    model = topic_model_results['model']
+                    weights = model.components_[topic_idx]
+                    top_word_indices = weights.argsort()[:-max_words-1:-1]
+                    top_weights = weights[top_word_indices]
+                    
+                    # Normalize weights for better visualization
+                    top_weights = top_weights / top_weights.sum()
+                else:  # NMF
+                    model = topic_model_results['model']
+                    weights = model.components_[topic_idx]
+                    top_word_indices = weights.argsort()[:-max_words-1:-1]
+                    top_weights = weights[top_word_indices]
+                    
+                    # Normalize weights
+                    top_weights = top_weights / top_weights.sum()
+                
+                # Get corresponding words
+                feature_names = topic_model_results['feature_names']
+                words = [feature_names[idx] for idx in top_word_indices]
+                
+                # Create horizontal bar chart
+                bars = ax.barh(range(len(words)), top_weights, align='center')
+                ax.invert_yaxis()
+                ax.set_yticks(range(len(words)))
+                ax.set_yticklabels(words)
+                ax.set_xlabel('Weight')
+                ax.set_title(f'Topic {topic_idx + 1}')
+                
+                # Add colorful bars
+                for bar, weight in zip(bars, top_weights):
+                    bar.set_color(cm.viridis(weight / max(top_weights)))
+        
+        # Hide unused subplots
+        for i in range(len(topics), len(axes)):
+            axes[i].axis('off')
+        
+        plt.tight_layout()
+        
+        if return_html:
+            # Convert plot to HTML
+            buffer = io.BytesIO()
+            plt.savefig(buffer, format='png')
+            buffer.seek(0)
+            image_data = buffer.getvalue()
+            buffer.close()
+            
+            # Convert to base64 for HTML embedding
+            encoded_image = base64.b64encode(image_data).decode('utf-8')
+            html = f'<img src="data:image/png;base64,{encoded_image}" />'
+            
+            # Close the plot to free memory
+            plt.close(fig)
+            
+            return html
+        
+        plt.close(fig)
+        return None
+    
+    def get_document_topics(
+        self, 
+        topic_model_results: Dict[str, Any],
+        texts: Optional[Union[List[str], pd.Series]] = None,
+        threshold: float = 0.1
+    ) -> pd.DataFrame:
+        """
+        Get the topic distribution for each document.
+        
+        Parameters
+        ----------
+        topic_model_results : Dict[str, Any]
+            The results from create_topic_model.
+        texts : Optional[Union[List[str], pd.Series]], default=None
+            New texts to analyze. If None, use the texts from the original model.
+        threshold : float, default=0.1
+            Minimum topic probability to include.
+            
+        Returns
+        -------
+        pd.DataFrame
+            A dataframe with the topic distribution for each document.
+        """
+        model = topic_model_results['model']
+        vectorizer = topic_model_results['vectorizer']
+        topics = topic_model_results['topics']
+        n_topics = topic_model_results['n_topics']
+        
+        # Use original texts or transform new ones
+        if texts is None:
+            doc_topic = topic_model_results['doc_topic_matrix']
+        else:
+            # Convert to list of strings if pandas Series
+            if isinstance(texts, pd.Series):
+                texts = texts.astype(str).fillna("").tolist()
+            
+            # Clean texts with basic preprocessing
+            cleaned_texts = [
+                self.preprocess_text(
+                    text,
+                    lowercase=True,
+                    remove_punctuation=True,
+                    remove_numbers=False,
+                    remove_stopwords=True if self.use_spacy else False,
+                    lemmatize=True if self.use_spacy else False,
+                )
+                for text in texts
+            ]
+            
+            # Transform to document-term matrix
+            X = vectorizer.transform(cleaned_texts)
+            
+            # Get document-topic matrix
+            doc_topic = model.transform(X)
+        
+        # Create column names based on top words in each topic
+        column_names = []
+        for topic_idx, top_words in topics:
+            topic_name = f"topic_{topic_idx + 1}_" + "_".join(top_words[:3])
+            column_names.append(topic_name)
+        
+        # Create DataFrame with topic distributions
+        doc_topic_df = pd.DataFrame(doc_topic, columns=column_names)
+        
+        # Apply threshold (element-wise)
+        doc_topic_df = doc_topic_df.where(doc_topic_df >= threshold, 0)
+        
+        # Normalize rows if any non-zero values remain
+        row_sums = doc_topic_df.sum(axis=1)
+        non_zero_rows = row_sums > 0
+        if non_zero_rows.any():
+            doc_topic_df.loc[non_zero_rows] = doc_topic_df.loc[non_zero_rows].div(
+                row_sums[non_zero_rows], axis=0
+            )
+        
+        return doc_topic_df
+    
+    def calculate_topic_coherence(
+        self,
+        topic_model_results: Dict[str, Any],
+        metric: str = 'c_v'
+    ) -> float:
+        """
+        Calculate the coherence of a topic model.
+        
+        Parameters
+        ----------
+        topic_model_results : Dict[str, Any]
+            The results from create_topic_model.
+        metric : str, default='c_v'
+            Coherence metric to use. Options:
+            - 'c_v': CV coherence (best overall)
+            - 'u_mass': UMass coherence (faster)
+            - 'c_uci': UCI coherence
+            - 'c_npmi': NPMI coherence
+            
+        Returns
+        -------
+        float
+            The coherence score.
+        """
+        try:
+            import gensim
+            from gensim.models.coherencemodel import CoherenceModel
+        except ImportError:
+            raise ImportError(
+                "gensim is not installed. Install it with 'pip install gensim'."
+            )
+        
+        # Extract model components
+        model = topic_model_results['model']
+        vectorizer = topic_model_results['vectorizer']
+        feature_names = topic_model_results['feature_names']
+        texts = topic_model_results['texts']
+        
+        # Convert to gensim format
+        id2word = {i: word for i, word in enumerate(feature_names)}
+        
+        # Extract topics in gensim format (list of sorted terms)
+        topics = []
+        for topic_idx in range(len(model.components_)):
+            topic = model.components_[topic_idx]
+            sorted_terms = topic.argsort()[:-11:-1]  # Top 10 terms
+            topics.append([feature_names[i] for i in sorted_terms])
+        
+        # Tokenize texts for coherence calculation
+        tokenized_texts = [text.split() for text in texts]
+        
+        # Create gensim dictionary
+        dictionary = gensim.corpora.Dictionary(tokenized_texts)
+        
+        # Create coherence model
+        coherence_model = CoherenceModel(
+            topics=topics,
+            texts=tokenized_texts,
+            dictionary=dictionary,
+            coherence=metric
+        )
+        
+        # Calculate coherence
+        return coherence_model.get_coherence()
+    
+    def find_optimal_topics(
+        self,
+        texts: Union[List[str], pd.Series],
+        min_topics: int = 2,
+        max_topics: int = 15,
+        step: int = 1,
+        method: str = 'lda',
+        coherence_metric: str = 'c_v',
+        max_features: int = 1000,
+        max_df: float = 0.95,
+        min_df: int = 2,
+        ngram_range: Tuple[int, int] = (1, 1),
+        random_state: int = 42,
+        plot_results: bool = True,
+        return_html: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Find the optimal number of topics for a corpus.
+        
+        Parameters
+        ----------
+        texts : Union[List[str], pd.Series]
+            The texts to analyze.
+        min_topics : int, default=2
+            Minimum number of topics to try.
+        max_topics : int, default=15
+            Maximum number of topics to try.
+        step : int, default=1
+            Step size for the number of topics.
+        method : str, default='lda'
+            Topic modeling method to use ('lda' or 'nmf').
+        coherence_metric : str, default='c_v'
+            Coherence metric to use.
+        max_features : int, default=1000
+            Maximum number of features to use.
+        max_df : float, default=0.95
+            Ignore terms that appear in more than this fraction of documents.
+        min_df : int, default=2
+            Ignore terms that appear in fewer than this number of documents.
+        ngram_range : Tuple[int, int], default=(1, 1)
+            The lower and upper boundary of the range of n-values for different n-grams to be extracted.
+        random_state : int, default=42
+            Random state for reproducibility.
+        plot_results : bool, default=True
+            Whether to plot the coherence scores.
+        return_html : bool, default=False
+            Whether to return the plot as an HTML img tag.
+        **kwargs : dict
+            Additional parameters to pass to the topic model.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary containing the coherence scores, optimal number of topics,
+            and the best model.
+        """
+        try:
+            import gensim
+        except ImportError:
+            raise ImportError(
+                "gensim is not installed. Install it with 'pip install gensim'."
+            )
+        
+        # Initialize results
+        coherence_values = []
+        models = {}
+        
+        # Try different numbers of topics
+        for n_topics in range(min_topics, max_topics + 1, step):
+            try:
+                print(f"Building model with {n_topics} topics...")
+                model_results = self.create_topic_model(
+                    texts=texts,
+                    n_topics=n_topics,
+                    method=method,
+                    max_features=max_features,
+                    max_df=max_df,
+                    min_df=min_df,
+                    ngram_range=ngram_range,
+                    random_state=random_state,
+                    **kwargs
+                )
+                
+                # Calculate coherence
+                coherence = self.calculate_topic_coherence(
+                    model_results,
+                    metric=coherence_metric
+                )
+                
+                coherence_values.append((n_topics, coherence))
+                models[n_topics] = model_results
+                
+                print(f"  Coherence score: {coherence:.4f}")
+            except Exception as e:
+                print(f"Error with {n_topics} topics: {str(e)}")
+        
+        # Find optimal number of topics
+        if coherence_values:
+            sorted_coherence = sorted(coherence_values, key=lambda x: x[1], reverse=True)
+            optimal_topics = sorted_coherence[0][0]
+            best_coherence = sorted_coherence[0][1]
+            best_model = models[optimal_topics]
+            
+            print(f"\nOptimal number of topics: {optimal_topics}")
+            print(f"Best coherence score: {best_coherence:.4f}")
+        else:
+            raise ValueError("Could not build any topic models. Try adjusting parameters.")
+        
+        # Plot results
+        if plot_results and len(coherence_values) > 1:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Sort by number of topics
+            coherence_values = sorted(coherence_values, key=lambda x: x[0])
+            
+            topics_range = [x[0] for x in coherence_values]
+            coherence_scores = [x[1] for x in coherence_values]
+            
+            ax.plot(topics_range, coherence_scores, marker='o')
+            ax.set_xlabel('Number of Topics')
+            ax.set_ylabel(f'Coherence Score ({coherence_metric})')
+            ax.set_title('Topic Model Coherence Scores')
+            ax.grid(True, alpha=0.3)
+            
+            # Highlight best model
+            best_idx = topics_range.index(optimal_topics)
+            ax.scatter(optimal_topics, coherence_scores[best_idx], 
+                       c='red', s=100, marker='*', label=f'Optimal: {optimal_topics} topics')
+            ax.legend()
+            
+            if return_html:
+                # Convert plot to HTML
+                buffer = io.BytesIO()
+                plt.savefig(buffer, format='png')
+                buffer.seek(0)
+                image_data = buffer.getvalue()
+                buffer.close()
+                
+                # Convert to base64 for HTML embedding
+                encoded_image = base64.b64encode(image_data).decode('utf-8')
+                html_plot = f'<img src="data:image/png;base64,{encoded_image}" />'
+                
+                # Close the plot to free memory
+                plt.close(fig)
+            else:
+                html_plot = None
+                plt.close(fig)
+        else:
+            html_plot = None
+        
+        return {
+            'coherence_values': coherence_values,
+            'optimal_topics': optimal_topics,
+            'best_coherence': best_coherence,
+            'best_model': best_model,
+            'all_models': models,
+            'coherence_plot_html': html_plot
+        }
+    
     def create_text_features(
         self,
         df: pd.DataFrame,
@@ -1251,6 +1843,9 @@ class TextProcessor:
         include_stats: bool = True,
         include_readability: bool = True,
         include_sentiment: bool = True,
+        include_topics: bool = False,
+        n_topics: int = 5,
+        topic_method: str = 'lda',
         prefix: str = 'text_',
     ) -> pd.DataFrame:
         """
@@ -1268,6 +1863,12 @@ class TextProcessor:
             Whether to include readability metrics features.
         include_sentiment : bool, default=True
             Whether to include sentiment analysis features.
+        include_topics : bool, default=False
+            Whether to include topic modeling features.
+        n_topics : int, default=5
+            Number of topics for topic modeling. Only used if include_topics=True.
+        topic_method : str, default='lda'
+            Topic modeling method to use ('lda' or 'nmf'). Only used if include_topics=True.
         prefix : str, default='text_'
             Prefix for the feature column names.
             
@@ -1304,5 +1905,26 @@ class TextProcessor:
             sentiment_df = pd.DataFrame.from_records(sentiment_list)
             sentiment_df.columns = [f"{prefix}sent_{col}" for col in sentiment_df.columns]
             result = pd.concat([result, sentiment_df], axis=1)
+        
+        # Add topic modeling features
+        if include_topics:
+            try:
+                # Create topic model
+                topic_model = self.create_topic_model(
+                    texts=texts,
+                    n_topics=n_topics,
+                    method=topic_method
+                )
+                
+                # Get document-topic distribution
+                doc_topic_df = self.get_document_topics(topic_model)
+                
+                # Rename columns with prefix
+                doc_topic_df.columns = [f"{prefix}topic_{col}" for col in doc_topic_df.columns]
+                
+                # Add to results
+                result = pd.concat([result, doc_topic_df], axis=1)
+            except Exception as e:
+                warnings.warn(f"Error creating topic features: {str(e)}. Skipping topic modeling.")
         
         return result

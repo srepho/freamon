@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-04-22
+
+### Added
+- Advanced topic modeling capabilities in TextProcessor:
+  - Added create_topic_model() method supporting LDA and NMF algorithms
+  - Added plot_topics() for visualizing topic models with horizontal bar charts
+  - Added get_document_topics() for extracting document-topic distributions
+  - Added calculate_topic_coherence() for evaluating topic model quality
+  - Added find_optimal_topics() to determine the optimal number of topics
+  - Enhanced create_text_features() to include topic modeling features
+  - Added comprehensive documentation for topic modeling functions
+  - Added topic_modeling_example.py showcasing new capabilities
+  - Added tests for topic modeling functionality
+
+### Improved
+- Enhanced text processing capabilities:
+  - Better integration with spaCy for advanced NLP tasks
+  - Improved error handling for optional dependencies
+  - Added support for interactive visualizations with HTML export
+  - Enhanced documentation with more examples
+
 ## [0.3.0] - 2025-04-15
 
 ### Added
