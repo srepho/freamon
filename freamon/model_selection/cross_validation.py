@@ -169,8 +169,9 @@ def time_series_cross_validate(
     problem_type: Literal['classification', 'regression'] = 'regression',
     feature_columns: Optional[List[str]] = None,
     expanding_window: bool = False,
+    save_predictions: bool = False,
     **model_kwargs
-) -> Dict[str, List[float]]:
+) -> Dict[str, List[Any]]:
     """
     Perform time series cross-validation on a dataframe.
     
@@ -198,13 +199,17 @@ def time_series_cross_validate(
         If True, uses an expanding window approach where each new split includes
         all previously seen data plus the new fold. This simulates production scenarios
         where you retrain with all available historical data.
+    save_predictions : bool, default=False
+        If True, saves the predictions for each fold for later analysis and visualization.
+        This allows plotting predictions over time.
     **model_kwargs
         Additional keyword arguments to pass to the model function.
     
     Returns
     -------
-    Dict[str, List[float]]
+    Dict[str, List[Any]]
         A dictionary of metric names mapped to lists of values for each fold.
+        If save_predictions=True, also includes 'predictions', 'test_targets', and 'test_dates'.
     
     Examples
     --------
@@ -257,7 +262,13 @@ def time_series_cross_validate(
     tscv = TimeSeriesSplit(n_splits=n_splits)
     
     # Initialize metrics dictionary
-    metrics_dict: Dict[str, List[float]] = {}
+    metrics_dict: Dict[str, List[Any]] = {}
+    
+    # If saving predictions, initialize lists
+    if save_predictions:
+        metrics_dict['predictions'] = []
+        metrics_dict['test_targets'] = []
+        metrics_dict['test_dates'] = []
     
     # For expanding window approach, we need to track all previous train indices
     all_previous_indices = []
@@ -332,14 +343,35 @@ def time_series_cross_validate(
                 metrics_dict[metric] = []
             metrics_dict[metric].append(value)
         
+        # Save predictions if requested
+        if save_predictions:
+            metrics_dict['predictions'].append(y_pred)
+            metrics_dict['test_targets'].append(y_test.values)
+            metrics_dict['test_dates'].append(test_df[date_column].values)
+        
         # Save fold information for debugging and analysis
-        fold_metrics['fold'] = fold_idx
-        fold_metrics['train_size'] = len(train_df)
-        fold_metrics['test_size'] = len(test_df)
-        fold_metrics['train_start_date'] = train_df[date_column].min()
-        fold_metrics['train_end_date'] = train_df[date_column].max()
-        fold_metrics['test_start_date'] = test_df[date_column].min()
-        fold_metrics['test_end_date'] = test_df[date_column].max()
+        if 'fold' not in metrics_dict:
+            metrics_dict['fold'] = []
+        if 'train_size' not in metrics_dict:
+            metrics_dict['train_size'] = []
+        if 'test_size' not in metrics_dict:
+            metrics_dict['test_size'] = []
+        if 'train_start_date' not in metrics_dict:
+            metrics_dict['train_start_date'] = []
+        if 'train_end_date' not in metrics_dict:
+            metrics_dict['train_end_date'] = []
+        if 'test_start_date' not in metrics_dict:
+            metrics_dict['test_start_date'] = []
+        if 'test_end_date' not in metrics_dict:
+            metrics_dict['test_end_date'] = []
+        
+        metrics_dict['fold'].append(fold_idx)
+        metrics_dict['train_size'].append(len(train_df))
+        metrics_dict['test_size'].append(len(test_df))
+        metrics_dict['train_start_date'].append(train_df[date_column].min())
+        metrics_dict['train_end_date'].append(train_df[date_column].max())
+        metrics_dict['test_start_date'].append(test_df[date_column].min())
+        metrics_dict['test_end_date'].append(test_df[date_column].max())
     
     return metrics_dict
 

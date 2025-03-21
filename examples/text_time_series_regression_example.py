@@ -15,7 +15,12 @@ from datetime import datetime, timedelta
 from freamon.utils.text_utils import TextProcessor
 from freamon.features.time_series_engineer import TimeSeriesFeatureEngineer
 from freamon.model_selection.cross_validation import time_series_cross_validate
-from freamon.modeling import create_lightgbm_regressor, LightGBMModel
+from freamon.modeling import (
+    create_lightgbm_regressor, LightGBMModel,
+    plot_cv_metrics, plot_feature_importance, 
+    plot_importance_by_groups, plot_time_series_predictions, 
+    plot_cv_predictions_over_time, TEXT_FEATURE_GROUPS, TIME_SERIES_FEATURE_GROUPS
+)
 
 
 # Helper functions for modeling
@@ -270,7 +275,7 @@ def main():
             **kwargs
         )
     
-    # Perform time series cross-validation
+    # Perform time series cross-validation with prediction saving
     cv_results = time_series_cross_validate(
         X_combined.reset_index(drop=True),  # Reset index after dropping NaN rows
         target_column='sales',
@@ -279,14 +284,26 @@ def main():
         n_splits=5,
         problem_type='regression',
         feature_columns=feature_columns,
-        expanding_window=True
+        expanding_window=True,
+        save_predictions=True  # Save predictions for visualization
     )
     
     print("\nCross-validation results:")
     for metric, values in cv_results.items():
         if metric not in ['fold', 'train_size', 'test_size', 'train_start_date', 
-                         'train_end_date', 'test_start_date', 'test_end_date']:
+                         'train_end_date', 'test_start_date', 'test_end_date',
+                         'predictions', 'test_targets', 'test_dates']:
             print(f"  {metric}: {np.mean(values):.4f} (±{np.std(values):.4f})")
+    
+    # Visualize CV metrics
+    fig_metrics = plot_cv_metrics(cv_results)
+    plt.savefig('cv_metrics.png')
+    plt.close()
+    
+    # Visualize time series predictions
+    fig_ts = plot_cv_predictions_over_time(cv_results)
+    plt.savefig('time_series_predictions.png')
+    plt.close()
     
     print("\n7. Feature Importance Analysis")
     # Get complete dataset (after dropping NaN values)
@@ -314,39 +331,70 @@ def main():
     
     # Get feature importances
     importances = model.feature_importances_
-    feature_importance = pd.DataFrame({
-        'feature': feature_columns,
-        'importance': importances
-    }).sort_values('importance', ascending=False)
+    feature_importance = pd.Series(importances, index=feature_columns).sort_values(ascending=False)
+    
+    # Visualize feature importance
+    fig_importance = plot_feature_importance(model, feature_names=feature_columns, top_n=15)
+    plt.savefig('feature_importance.png')
+    plt.close()
     
     print("\nTop 10 important features:")
-    for _, row in feature_importance.head(10).iterrows():
-        print(f"  {row['feature']}: {row['importance']:.4f}")
+    for feature, importance in feature_importance.head(10).items():
+        print(f"  {feature}: {importance:.4f}")
     
     print("\n8. Feature Type Analysis")
-    # Categorize features by type
-    text_stat_features = [f for f in feature_importance['feature'] if f.startswith('text_stat_')]
-    text_read_features = [f for f in feature_importance['feature'] if f.startswith('text_read_')]
-    text_sent_features = [f for f in feature_importance['feature'] if f.startswith('text_sent_')]
-    bow_features_list = [f for f in feature_importance['feature'] if f.startswith('bow_')]
-    tfidf_features_list = [f for f in feature_importance['feature'] if f.startswith('tfidf_')]
-    ts_lag_features = [f for f in feature_importance['feature'] if f.startswith('sales_lag_')]
-    ts_rolling_features = [f for f in feature_importance['feature'] if f.startswith('sales_rolling_')]
     
-    # Calculate total importance by feature type
-    def sum_importance(feature_list):
-        if not feature_list:
-            return 0
-        return feature_importance[feature_importance['feature'].isin(feature_list)]['importance'].sum()
+    # Define our feature groups for this analysis
+    custom_feature_groups = {
+        'Text Statistics': ['text_stat_'],
+        'Text Readability': ['text_read_'],
+        'Text Sentiment': ['text_sent_'],
+        'Bag-of-Words': ['bow_'],
+        'TF-IDF': ['tfidf_'],
+        'Time Series Lag': ['sales_lag_'],
+        'Time Series Rolling': ['sales_rolling_'],
+    }
+    
+    # Define custom function for summarizing feature importance by groups
+    def sum_importance_by_group(importance_series, groups):
+        results = {}
+        for group_name, patterns in groups.items():
+            group_features = []
+            for pattern in patterns:
+                matches = [f for f in importance_series.index if pattern in f]
+                group_features.extend(matches)
+            
+            if group_features:
+                results[group_name] = importance_series[group_features].sum()
+            else:
+                results[group_name] = 0
+        
+        return pd.Series(results).sort_values(ascending=False)
+    
+    # Calculate importance by group
+    group_importance = sum_importance_by_group(feature_importance, custom_feature_groups)
+    
+    # Create group importance bar plot
+    plt.figure(figsize=(10, 6))
+    group_importance.sort_values().plot(kind='barh', color='skyblue')
+    plt.title('Feature Group Importance')
+    plt.xlabel('Importance')
+    plt.tight_layout()
+    plt.savefig('feature_groups_bar.png')
+    plt.close()
+    
+    # Create group importance pie chart
+    plt.figure(figsize=(10, 6))
+    group_importance[group_importance > 0].plot(kind='pie', autopct='%1.1f%%')
+    plt.title('Feature Group Importance')
+    plt.ylabel('')
+    plt.tight_layout()
+    plt.savefig('feature_groups_pie.png')
+    plt.close()
     
     print("\nFeature importance by type:")
-    print(f"  Text statistics features: {sum_importance(text_stat_features):.4f}")
-    print(f"  Text readability features: {sum_importance(text_read_features):.4f}")
-    print(f"  Text sentiment features: {sum_importance(text_sent_features):.4f}")
-    print(f"  Bag-of-words features: {sum_importance(bow_features_list):.4f}")
-    print(f"  TF-IDF features: {sum_importance(tfidf_features_list):.4f}")
-    print(f"  Time series lag features: {sum_importance(ts_lag_features):.4f}")
-    print(f"  Time series rolling features: {sum_importance(ts_rolling_features):.4f}")
+    for group, importance in group_importance.items():
+        print(f"  {group}: {importance:.4f}")
     
     print("\nExample complete!")
 

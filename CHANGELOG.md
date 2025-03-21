@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-04-15
+
+### Added
+- Enhanced time series regression capabilities:
+  - Improved LightGBM integration for time series modeling
+  - Added helper functions for easier model creation with sensible defaults
+  - Added visualization tools for model evaluation and interpretation
+  - Added feature importance analysis with grouping by feature types
+  - Added time series cross-validation with prediction saving
+  - Added visualization for CV metrics, feature importance, and time series predictions
+  - Updated text_time_series_regression_example.py to demonstrate these capabilities
+
+### Changed
+- Refactored model creation with helper functions:
+  - Added create_lightgbm_regressor() and create_lightgbm_classifier() functions
+  - Added create_sklearn_model() function for scikit-learn models
+  - Improved parameter handling for direct model creation vs. tuning
+- Enhanced visualization capabilities:
+  - Added plot_cv_metrics() for visualizing cross-validation results
+  - Added plot_feature_importance() with flexible display options
+  - Added plot_importance_by_groups() for grouped feature importance analysis
+  - Added plot_time_series_predictions() for visualization of predictions over time
+  - Added summarize_feature_importance_by_groups() for aggregated importance analysis
+
+### Fixed
+- Fixed LightGBMModel compatibility with direct LightGBM usage
+- Fixed eval_set handling in Model class
+- Fixed issues with feature importance extraction and visualization
+- Fixed serialization of datetime objects in visualization functions
+
 ## [0.2.9] - 2025-04-10
 
 ### Added

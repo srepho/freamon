@@ -71,7 +71,119 @@ pip install -e ".[dev,all]"
 
 ## Quick Start
 
-### Time Series Feature Engineering (New!)
+### Time Series Modeling and Visualization (New!)
+
+```python
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from freamon.modeling.helpers import create_lightgbm_regressor
+from freamon.model_selection.cross_validation import time_series_cross_validate
+from freamon.modeling.visualization import (
+    plot_cv_metrics,
+    plot_feature_importance, 
+    plot_importance_by_groups,
+    plot_time_series_predictions
+)
+
+# Create time series data with date, target and text features
+def create_sample_data(n_days=365):
+    start_date = datetime(2023, 1, 1)
+    dates = [start_date + timedelta(days=i) for i in range(n_days)]
+    
+    # Create trend and seasonal components
+    trend = np.linspace(100, 200, n_days)
+    weekly = 15 * np.sin(2 * np.pi * np.arange(n_days) / 7)
+    monthly = 30 * np.sin(2 * np.pi * np.arange(n_days) / 30)
+    noise = np.random.normal(0, 10, n_days)
+    
+    # Target variable
+    values = trend + weekly + monthly + noise
+    
+    # Text features (simulated)
+    sentiments = np.random.choice(['positive', 'neutral', 'negative'], n_days, p=[0.3, 0.5, 0.2])
+    topics = np.random.choice(['finance', 'technology', 'retail', 'healthcare'], n_days)
+    
+    return pd.DataFrame({
+        'date': dates,
+        'target': values,
+        'sentiment': sentiments,
+        'topic': topics,
+        'text_length': np.random.randint(50, 500, n_days)
+    })
+
+# Create dataset and prepare features
+df = create_sample_data()
+print(f"Dataset created with {len(df)} observations")
+
+# Feature engineering - create time-based features
+df['dayofweek'] = df['date'].dt.dayofweek
+df['month'] = df['date'].dt.month
+df['day'] = df['date'].dt.day
+df['is_weekend'] = (df['dayofweek'] >= 5).astype(int)
+
+# Create lag features
+for lag in [1, 2, 3, 7, 14]:
+    df[f'target_lag_{lag}'] = df['target'].shift(lag)
+
+# Create rolling window features
+for window in [3, 7, 14]:
+    df[f'target_roll_mean_{window}'] = df['target'].rolling(window=window).mean()
+    df[f'target_roll_std_{window}'] = df['target'].rolling(window=window).std()
+
+# Encode categorical variables
+df = pd.get_dummies(df, columns=['sentiment', 'topic'], drop_first=True)
+
+# Drop NAs from lag features
+df = df.dropna()
+
+# Define features and target
+features = [col for col in df.columns if col not in ['date', 'target']]
+X = df[features]
+y = df['target']
+date_col = df['date']
+
+# Create LightGBM regressor with simplified helper function
+model = create_lightgbm_regressor(num_leaves=31, learning_rate=0.1)
+
+# Perform time series cross-validation with expanding window
+cv_results = time_series_cross_validate(
+    model, X, y, date_col,
+    initial_window=0.5, 
+    step=30,
+    save_predictions=True
+)
+
+# Visualize cross-validation metrics
+plot_cv_metrics(cv_results)
+
+# Visualize feature importance from the last fold's model
+plot_feature_importance(cv_results['models'][-1], X.columns, top_n=15)
+
+# Group features by type and visualize importance by groups
+feature_groups = {
+    'time_features': ['dayofweek', 'month', 'day', 'is_weekend'],
+    'lag_features': [col for col in X.columns if 'lag' in col],
+    'rolling_features': [col for col in X.columns if 'roll' in col],
+    'text_features': ['text_length'] + [col for col in X.columns if 'sentiment' in col or 'topic' in col]
+}
+
+plot_importance_by_groups(cv_results['models'][-1], X.columns, feature_groups)
+
+# Visualize predictions from cross-validation
+plot_time_series_predictions(
+    date_col[cv_results['test_indices'][-1]],
+    y.iloc[cv_results['test_indices'][-1]],
+    cv_results['predictions'][-1]
+)
+
+# Final model training on all data
+final_model = create_lightgbm_regressor(num_leaves=31, learning_rate=0.1)
+final_model.fit(X, y)
+```
+
+### Time Series Feature Engineering
 
 ```python
 import pandas as pd
@@ -339,6 +451,8 @@ print(f"Validation metrics: {metrics}")
   - **tuning:** Hyperparameter optimization with parameter importance awareness
   - **importance:** Permutation-based feature importance
   - **calibration:** Probability calibration for classification models
+  - **helpers:** Simplified model creation functions with sensible defaults
+  - **visualization:** Tools for visualizing model performance, feature importance, and predictions
 - **pipeline:** Integrated workflow system connecting feature engineering with model training
   - **pipeline:** Core Pipeline interface
   - **steps:** Reusable pipeline steps for different tasks
@@ -346,6 +460,27 @@ print(f"Validation metrics: {metrics}")
   - **cross_validation:** Cross-validation training in pipelines
 
 Check out the [ROADMAP.md](ROADMAP.md) file for information on planned features and development phases.
+
+## Example Scripts
+
+The package includes several example scripts to demonstrate its functionality:
+
+- **text_time_series_regression_example.py** - Advanced time series modeling with LightGBM and visualization
+- **lightgbm_simplified_example.py** - Simplified LightGBM model creation with helper functions
+- **threshold_optimization_example.py** - Classification threshold optimization
+- **shapiq_example.py** - Feature interaction detection with ShapIQ
+- **pipeline_example.py** - Complete modeling pipeline
+- **automated_end_to_end_pipeline.py** - Fully automated modeling workflow
+- **drift_and_visualization_example.py** - Data drift detection and visualization
+- **time_series_enhanced_example.py** - Advanced time series features
+- **text_analytics_example.py** - Text processing and feature extraction
+- **multivariate_analysis_example.py** - Multivariate feature exploration
+
+Run any example by navigating to the examples directory and executing:
+
+```bash
+python example_name.py
+```
 
 ## Development
 
