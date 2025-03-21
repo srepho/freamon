@@ -15,9 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added calculate_embedding_similarity() for comparing embeddings
   - Added find_most_similar_documents() for document similarity search
   - Enhanced create_text_features() to include embedding-based features
+  - Added save_word_vectors() and load_word_vectors() for offline mode support
+  - Added load_word2vec_model() for loading entire models from disk
   - Added comprehensive documentation for word embedding functions
   - Added word_embeddings_example.py showcasing new capabilities
-  - Added tests for word embedding functionality
+  - Added test_word_embeddings.py for testing core functionality
   - Added new word_embeddings optional dependency group
 
 ### Improved
@@ -26,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added PCA dimensionality reduction for embedding features
   - Improved error handling for optional dependencies
   - Added support for document similarity visualization
+  - Added integration tests for word embeddings with Pipeline system
+  - Added efficient handling of duplicate texts to improve performance
+  - Added robust handling of blank/null text values with fallback strategies
+  - Added benchmarking utilities for word embedding components
+  - Added examples of offline usage in environments without internet access
 
 ## [0.3.1] - 2025-04-22
 

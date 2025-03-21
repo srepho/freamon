@@ -1,189 +1,241 @@
 # Word Embeddings
 
-Freamon offers powerful word embedding capabilities through the `TextProcessor` class. Word embeddings are vector representations of words that capture semantic relationships, enabling advanced text analysis and feature engineering.
+Freamon provides comprehensive word embedding capabilities through its `TextProcessor` class. Word embeddings are vector representations of words that capture semantic relationships, allowing you to perform advanced NLP tasks such as similarity analysis, classification, and clustering.
 
 ## Supported Embedding Types
 
-The `TextProcessor` supports three main types of word embeddings:
+- **Word2Vec**: Train custom embeddings on your own text data
+- **GloVe**: Load pre-trained Global Vectors embeddings
+- **FastText**: Load pre-trained FastText embeddings that handle subwords
 
-1. **Word2Vec**: Train embeddings directly on your corpus
-2. **GloVe** (Global Vectors for Word Representation): Use pretrained embeddings
-3. **FastText**: Use pretrained embeddings with subword information
-
-## Working with Word2Vec
-
-### Training a Word2Vec Model
+## Basic Usage
 
 ```python
 from freamon.utils.text_utils import TextProcessor
+import pandas as pd
 
-# Initialize TextProcessor
+# Initialize the TextProcessor
 processor = TextProcessor()
 
-# Train Word2Vec on your texts
+# Sample data
+df = pd.DataFrame({
+    'text': [
+        "This is a document about science and medicine",
+        "Astronomy and space exploration are fascinating",
+        "Sports news: The hockey team won the championship"
+    ],
+    'category': ['science', 'space', 'sports']
+})
+
+# Train Word2Vec model on your text data
 word2vec = processor.create_word2vec_embeddings(
-    texts=df['text_column'],
-    vector_size=100,  # Vector dimension
-    window=5,         # Context window size
-    min_count=5,      # Minimum word frequency
-    epochs=10,        # Training epochs
-    sg=0              # 0=CBOW, 1=Skip-gram
+    texts=df['text'],
+    vector_size=100,
+    window=5,
+    min_count=1,
+    epochs=10
 )
 
-# Access the model and word vectors
-model = word2vec['model']
-word_vectors = word2vec['wv']
+# Create document-level embeddings
+doc_embeddings = processor.create_document_embeddings(
+    texts=df['text'],
+    word_vectors=word2vec['wv'],
+    method='mean'  # Average of word vectors
+)
 
-# Get vector for a specific word
-vector = word_vectors['example']
+# Calculate similarity between documents
+similarity = processor.calculate_embedding_similarity(
+    doc_embeddings[0],  # First document
+    doc_embeddings[1],  # Second document
+    method='cosine'     # Cosine similarity
+)
 
-# Find similar words
-similar_words = word_vectors.most_similar('example', topn=10)
+print(f"Similarity between documents: {similarity:.4f}")
 ```
 
-## Using Pretrained Embeddings
+## Working with Duplicate Texts
 
-### Loading GloVe Embeddings
+When working with text data that contains duplicates, it's more efficient to:
+1. Deduplicate the texts before creating embeddings
+2. Map the embeddings back to all instances of each text
 
 ```python
-# Load pretrained GloVe embeddings
+from freamon.data_quality.duplicates import remove_duplicates
+import numpy as np
+
+# Detect and remove duplicates
+df_unique = remove_duplicates(df, subset=['text'], keep='first')
+
+# Create embeddings on deduplicated data
+word2vec = processor.create_word2vec_embeddings(
+    texts=df_unique['text'],
+    vector_size=100,
+    window=5,
+    min_count=1,
+    epochs=10
+)
+
+# Generate document embeddings
+doc_embeddings = processor.create_document_embeddings(
+    texts=df_unique['text'],
+    word_vectors=word2vec['wv'],
+    method='mean'
+)
+
+# Create a mapping from texts to embeddings
+text_to_embedding = {}
+for idx, text in enumerate(df_unique['text']):
+    text_to_embedding[text] = doc_embeddings[idx]
+
+# Create a DataFrame to store the embeddings for all documents (including duplicates)
+embedding_df = pd.DataFrame(index=df.index)
+for dim in range(5):  # First 5 dimensions for example
+    embedding_df[f'emb_dim_{dim}'] = np.nan
+
+# Map embeddings back to all rows including duplicates
+def is_empty_text(text):
+    """Check if text is empty, None, NaN, or just whitespace."""
+    if pd.isna(text) or not isinstance(text, str):
+        return True
+    return len(text.strip()) == 0
+
+for idx, row in df.iterrows():
+    text = row['text']
+    if not is_empty_text(text) and text in text_to_embedding:
+        embedding = text_to_embedding[text]
+        for dim in range(5):
+            embedding_df.loc[idx, f'emb_dim_{dim}'] = embedding[dim]
+    else:
+        # Handle empty texts with zeros
+        for dim in range(5):
+            embedding_df.loc[idx, f'emb_dim_{dim}'] = 0.0
+
+# Join with original dataframe
+result_df = df.join(embedding_df)
+```
+
+## Handling Empty Texts
+
+Empty or missing text values are automatically handled by the word embedding functions:
+
+```python
+# DataFrame with some empty texts
+df_with_empty = pd.DataFrame({
+    'text': [
+        "This is a valid document",
+        "",  # Empty string
+        None,  # None value
+        "Another valid document"
+    ]
+})
+
+# Create document embeddings with empty text handling
+doc_embeddings = processor.create_document_embeddings(
+    texts=df_with_empty['text'],
+    word_vectors=word2vec['wv'],
+    method='mean',
+    handle_empty_texts=True  # Will use zero vectors for empty texts
+)
+
+# All rows will have embeddings, with zeros for empty texts
+print(f"Embeddings shape: {doc_embeddings.shape}")
+```
+
+## Using Pre-trained Embeddings
+
+Freamon supports loading pre-trained embeddings:
+
+```python
+# Load GloVe embeddings
 glove = processor.load_pretrained_embeddings(
     embedding_type='glove',
-    dimension=100,     # Options: 50, 100, 200, 300
-    limit=50000        # Limit vocabulary size
+    dimension=100,
+    limit=50000  # Limit vocabulary size
 )
 
-# Access word vectors
-word_vectors = glove['wv']
-```
-
-### Loading FastText Embeddings
-
-```python
-# Load pretrained FastText embeddings
+# Load FastText embeddings
 fasttext = processor.load_pretrained_embeddings(
     embedding_type='fasttext',
-    dimension=300,     # Only 300 is available for FastText
-    limit=50000        # Limit vocabulary size
+    dimension=300,
+    limit=50000
 )
 
-# Access word vectors
-word_vectors = fasttext['wv']
+# Create document embeddings with pre-trained vectors
+glove_doc_embeddings = processor.create_document_embeddings(
+    texts=df['text'],
+    word_vectors=glove['wv'],
+    method='mean'
+)
 ```
 
-## Document-Level Embeddings
+## Offline Mode
 
-### Creating Document Embeddings
+For environments without internet access, you can save and load embeddings locally:
 
 ```python
-# Create document embeddings from word embeddings
-doc_embeddings = processor.create_document_embeddings(
-    texts=df['text_column'],
-    word_vectors=word_vectors,
-    method='mean'      # Options: 'mean', 'weighted', 'idf'
+# Save Word2Vec model to disk
+model_path = "path/to/word2vec_model.model"
+word2vec['model'].save(model_path)
+
+# Save word vectors in word2vec format
+vectors_path = "path/to/word_vectors.txt"
+processor.save_word_vectors(word2vec['wv'], vectors_path)
+
+# Later, load the saved model
+loaded_model = processor.load_word2vec_model(model_path)
+
+# Or load just the word vectors
+loaded_vectors = processor.load_word_vectors(vectors_path)
+
+# Load pre-trained embeddings from a local file
+local_glove = processor.load_pretrained_embeddings(
+    embedding_type='glove',
+    local_path="path/to/glove.6B.100d.txt"
 )
 
-# doc_embeddings is a numpy array with shape (n_documents, vector_size)
+# Try with offline mode (will only use cached embeddings)
+try:
+    offline_embeddings = processor.load_pretrained_embeddings(
+        embedding_type='glove',
+        dimension=100,
+        offline_mode=True  # Won't attempt to download
+    )
+except FileNotFoundError:
+    print("No cached embeddings available")
 ```
 
-### Document Similarity
+## Integration with Text Feature Engineering
+
+Word embeddings can be integrated into Freamon's text feature engineering pipeline:
 
 ```python
-# Calculate similarity between two document embeddings
-similarity = processor.calculate_embedding_similarity(
-    embedding1=doc_embeddings[0],
-    embedding2=doc_embeddings[1],
-    method='cosine'    # Options: 'cosine', 'euclidean', 'dot'
-)
-
-# Find most similar documents to a query document
-similar_docs = processor.find_most_similar_documents(
-    query_embedding=doc_embeddings[0],
-    document_embeddings=doc_embeddings,
-    top_n=5,
-    similarity_method='cosine'
-)
-
-# similar_docs is a list of tuples (document_index, similarity_score)
-```
-
-## Feature Engineering with Embeddings
-
-### Adding Embedding Features
-
-```python
-# Create text features including embeddings
-features = processor.create_text_features(
+# Create text features including embedding-based features
+features_df = processor.create_text_features(
     df,
-    'text_column',
+    'text',
     include_stats=True,
     include_readability=True,
     include_sentiment=True,
-    include_embeddings=True,           # Enable embedding features
-    embedding_type='word2vec',         # Options: 'word2vec', 'glove', 'fasttext'
+    include_embeddings=True,  # Add embedding features
+    embedding_type='word2vec',
     embedding_dimension=100,
-    embedding_components=5             # Number of PCA components to extract
-)
-
-# The resulting dataframe includes embedding features named 'text_emb_word2vec_1', etc.
-```
-
-## Visualization Example
-
-You can visualize document embeddings using dimensionality reduction techniques:
-
-```python
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
-
-# Reduce dimensions for visualization
-tsne = TSNE(n_components=2, random_state=42)
-embeddings_2d = tsne.fit_transform(doc_embeddings)
-
-# Plot with categories
-plt.figure(figsize=(10, 8))
-for category in df['category'].unique():
-    indices = df['category'] == category
-    plt.scatter(
-        embeddings_2d[indices, 0],
-        embeddings_2d[indices, 1],
-        label=category,
-        alpha=0.7
-    )
-plt.legend()
-plt.title("Document Embeddings")
-plt.show()
-```
-
-## Performance Considerations
-
-- For large datasets, limit the vocabulary size when loading pretrained embeddings
-- Use a smaller `embedding_dimension` if memory is a concern
-- Consider using `method='idf'` in `create_document_embeddings()` for better representation
-- Embeddings are cached in `~/.freamon/embeddings/` to avoid repeated downloads
-
-## Advanced Usage
-
-### Custom Word Weights
-
-```python
-# Create document embeddings with custom word weights
-weights = {'important': 2.0, 'critical': 3.0, 'key': 1.5}
-doc_embeddings = processor.create_document_embeddings(
-    texts=df['text_column'],
-    word_vectors=word_vectors,
-    method='weighted',
-    weights=weights
+    embedding_components=10  # Apply PCA to reduce to 10 components
 )
 ```
 
-### IDF Weighting
+## Benchmarking
+
+The word embeddings functionality includes benchmarking capabilities:
 
 ```python
-# Create document embeddings with IDF weighting
-doc_embeddings = processor.create_document_embeddings(
-    texts=df['text_column'],
-    word_vectors=word_vectors,
-    method='idf'  # Automatically calculates IDF weights
-)
+from freamon.examples.word_embeddings_benchmark import run_benchmarks
+
+# Run standard benchmarks for word embedding components
+run_benchmarks()
 ```
+
+The benchmarks measure:
+- Training time for Word2Vec models with different dimensions
+- Document embedding creation time with different aggregation methods
+- Similarity calculation performance
+- Classification performance using embeddings

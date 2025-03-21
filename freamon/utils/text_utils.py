@@ -1848,7 +1848,8 @@ class TextProcessor:
         workers: int = 4,
         epochs: int = 10,
         sg: int = 0,
-        seed: int = 42
+        seed: int = 42,
+        save_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create Word2Vec word embeddings from a collection of texts.
@@ -1871,6 +1872,8 @@ class TextProcessor:
             Training algorithm: 1 for skip-gram; otherwise CBOW.
         seed : int, default=42
             Seed for the random number generator.
+        save_path : Optional[str], default=None
+            Path to save the trained model. If provided, model will be saved to disk.
         
         Returns
         -------
@@ -1907,6 +1910,17 @@ class TextProcessor:
         vocab_size = len(model.wv.key_to_index)
         vocab = list(model.wv.key_to_index.keys())
         
+        # Save model if path is provided
+        if save_path:
+            # Create directory if it doesn't exist
+            save_dir = os.path.dirname(save_path)
+            if save_dir and not os.path.exists(save_dir):
+                os.makedirs(save_dir, exist_ok=True)
+                
+            # Save the model
+            model.save(save_path)
+            print(f"Word2Vec model saved to {save_path}")
+        
         return {
             'model': model,
             'wv': model.wv,
@@ -1916,11 +1930,130 @@ class TextProcessor:
             'embedding_type': 'word2vec'
         }
     
+    def load_word2vec_model(
+        self,
+        model_path: str
+    ) -> Dict[str, Any]:
+        """
+        Load a Word2Vec model from disk.
+        
+        Parameters
+        ----------
+        model_path : str
+            Path to the saved Word2Vec model.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing the Word2Vec model and vocabulary information.
+        """
+        try:
+            from gensim.models import Word2Vec
+        except ImportError:
+            raise ImportError(
+                "gensim is not installed. Install it with 'pip install gensim'."
+            )
+            
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found at {model_path}")
+            
+        # Load the model
+        model = Word2Vec.load(model_path)
+        
+        # Get vocabulary info
+        vocab_size = len(model.wv.key_to_index)
+        vocab = list(model.wv.key_to_index.keys())
+        
+        return {
+            'model': model,
+            'wv': model.wv,
+            'vocab_size': vocab_size,
+            'vocab': vocab,
+            'vector_size': model.wv.vector_size,
+            'embedding_type': 'word2vec'
+        }
+    
+    def save_word_vectors(
+        self,
+        word_vectors: Any,
+        save_path: str,
+        binary: bool = False
+    ) -> None:
+        """
+        Save word vectors to disk in Word2Vec format.
+        
+        Parameters
+        ----------
+        word_vectors : Any
+            Word vectors to save (typically from embeddings['wv']).
+        save_path : str
+            Path to save the word vectors.
+        binary : bool, default=False
+            Whether to save in binary format.
+        """
+        # Create directory if it doesn't exist
+        save_dir = os.path.dirname(save_path)
+        if save_dir and not os.path.exists(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+            
+        # Check if word_vectors has save_word2vec_format method
+        if hasattr(word_vectors, 'save_word2vec_format'):
+            word_vectors.save_word2vec_format(save_path, binary=binary)
+            print(f"Word vectors saved to {save_path}")
+        else:
+            raise TypeError("word_vectors must support save_word2vec_format method")
+    
+    def load_word_vectors(
+        self,
+        file_path: str,
+        binary: bool = False,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Load word vectors from disk.
+        
+        Parameters
+        ----------
+        file_path : str
+            Path to the saved word vectors.
+        binary : bool, default=False
+            Whether the file is in binary format.
+        limit : Optional[int], default=None
+            Maximum number of word vectors to load.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing the word vectors and vocabulary information.
+        """
+        try:
+            from gensim.models import KeyedVectors
+        except ImportError:
+            raise ImportError(
+                "gensim is not installed. Install it with 'pip install gensim'."
+            )
+            
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Word vectors file not found at {file_path}")
+            
+        # Load word vectors
+        wv = KeyedVectors.load_word2vec_format(file_path, binary=binary, limit=limit)
+        
+        return {
+            'wv': wv,
+            'vocab_size': len(wv.key_to_index),
+            'vocab': list(wv.key_to_index.keys()),
+            'vector_size': wv.vector_size,
+            'embedding_type': 'word2vec_format'
+        }
+    
     def load_pretrained_embeddings(
         self,
         embedding_type: str = 'glove',
         dimension: int = 100,
-        limit: Optional[int] = 100000
+        limit: Optional[int] = 100000,
+        local_path: Optional[str] = None,
+        offline_mode: bool = False
     ) -> Dict[str, Any]:
         """
         Load pretrained word embeddings (GloVe or FastText).
@@ -1936,6 +2069,12 @@ class TextProcessor:
             For FastText: 300 only.
         limit : Optional[int], default=100000
             Maximum number of words to load. None for all.
+        local_path : Optional[str], default=None
+            Path to local embedding file. If provided, will load from this path 
+            instead of downloading. Must be in word2vec text format or gzipped word2vec text format.
+        offline_mode : bool, default=False
+            If True, will only use cached files and won't attempt to download.
+            Useful in environments without internet access.
         
         Returns
         -------
@@ -1949,6 +2088,37 @@ class TextProcessor:
             raise ImportError(
                 "gensim is not installed. Install it with 'pip install gensim'."
             )
+        
+        # If local path is provided, load from disk
+        if local_path:
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Embeddings file not found at {local_path}")
+                
+            print(f"Loading embeddings from local file: {local_path}")
+            
+            # Try to load the file
+            if local_path.endswith('.bin'):
+                # Binary word2vec format
+                wv = KeyedVectors.load_word2vec_format(
+                    local_path, 
+                    binary=True,
+                    limit=limit
+                )
+            else:
+                # Text format (including .txt, .vec, .gz)
+                wv = KeyedVectors.load_word2vec_format(
+                    local_path, 
+                    binary=False,
+                    limit=limit
+                )
+                
+            return {
+                'wv': wv,
+                'vocab_size': len(wv.key_to_index),
+                'vocab': list(wv.key_to_index.keys()),
+                'vector_size': wv.vector_size,
+                'embedding_type': embedding_type.lower()
+            }
         
         # For GloVe embeddings
         if embedding_type.lower() == 'glove':
@@ -1972,12 +2142,12 @@ class TextProcessor:
             # For standard dimensions, use provided URLs
             if dimension in glove_urls:
                 url = glove_urls[dimension]
-                embeddings_file = self._download_embeddings(url)
+                embeddings_file = self._download_embeddings(url, offline_mode=offline_mode)
             else:
                 # For testing with non-standard dimensions, allow custom file path
                 # If _download_embeddings is mocked, this uses the mocked return value
                 url = "test_embeddings.txt"
-                embeddings_file = self._download_embeddings(url)
+                embeddings_file = self._download_embeddings(url, offline_mode=offline_mode)
             
             # Create word-vector dictionary
             word_vectors = {}
@@ -2017,7 +2187,7 @@ class TextProcessor:
             
             # Simple English FastText embeddings
             fasttext_url = "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.vec.gz"
-            embeddings_file = self._download_embeddings(fasttext_url)
+            embeddings_file = self._download_embeddings(fasttext_url, offline_mode=offline_mode)
             
             # Load using gensim's built-in loader
             wv = KeyedVectors.load_word2vec_format(
@@ -2037,7 +2207,7 @@ class TextProcessor:
         else:
             raise ValueError(f"Unknown embedding type: {embedding_type}. Use 'glove' or 'fasttext'.")
     
-    def _download_embeddings(self, url: str) -> str:
+    def _download_embeddings(self, url: str, offline_mode: bool = False) -> str:
         """
         Download embedding files from URL if not already present.
         
@@ -2045,6 +2215,8 @@ class TextProcessor:
         ----------
         url : str
             URL to download the embeddings from.
+        offline_mode : bool, default=False
+            If True, will only use cached files and won't attempt to download.
             
         Returns
         -------
@@ -2061,16 +2233,28 @@ class TextProcessor:
         
         # Check if file already exists
         if not os.path.exists(local_path):
+            if offline_mode:
+                raise FileNotFoundError(
+                    f"Embeddings file {filename} not found in cache and offline mode is enabled. "
+                    f"Either disable offline mode or manually download the file to {local_path}"
+                )
+                
             print(f"Downloading {filename}... This may take a while.")
             
-            # Download file
-            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                urllib.request.urlretrieve(url, tmp_file.name)
-                
-                # Move to cache location
-                os.replace(tmp_file.name, local_path)
-                
-            print(f"Download complete. Saved to {local_path}")
+            try:
+                # Download file
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                    urllib.request.urlretrieve(url, tmp_file.name)
+                    
+                    # Move to cache location
+                    os.replace(tmp_file.name, local_path)
+                    
+                print(f"Download complete. Saved to {local_path}")
+            except (urllib.error.URLError, urllib.error.HTTPError) as e:
+                raise ConnectionError(
+                    f"Failed to download embeddings from {url}: {str(e)}. "
+                    f"Use a local_path parameter to load embeddings from disk instead."
+                )
         else:
             print(f"Using cached embeddings from {local_path}")
         

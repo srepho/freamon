@@ -109,46 +109,92 @@ for i, (doc_idx, similarity) in enumerate(similar_docs):
     print(f"{i+1}. Document {doc_idx} (Category: {category}, Similarity: {similarity:.4f})")
     print(f"   Text (truncated): {df.iloc[doc_idx]['text'][:100]}...")
 
+# Save the current word2vec model for local use
+model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+os.makedirs(model_dir, exist_ok=True)
+model_path = os.path.join(model_dir, "word2vec_example.model")
+vectors_path = os.path.join(model_dir, "word2vec_vectors.txt")
+
+# Save the whole model and just the vectors
+print(f"\nSaving model to {model_path}")
+word2vec['model'].save(model_path)
+
+print(f"Saving word vectors to {vectors_path}")
+processor.save_word_vectors(word2vec['wv'], vectors_path)
+
+# Demonstrate loading from local files
+print("\n=== Loading Models from Local Files ===")
+print(f"Loading Word2Vec model from {model_path}")
+local_w2v = processor.load_word2vec_model(model_path)
+print(f"Loaded model with vocabulary size: {local_w2v['vocab_size']}")
+
+print(f"\nLoading word vectors from {vectors_path}")
+local_vectors = processor.load_word_vectors(vectors_path)
+print(f"Loaded vectors with vocabulary size: {local_vectors['vocab_size']}")
+
 # Try working with pretrained embeddings
-print("\n=== Using GloVe Embeddings ===")
+print("\n=== Using Pretrained Embeddings ===")
 try:
-    print("Loading GloVe embeddings (this might take a while)...")
-    glove = processor.load_pretrained_embeddings(
-        embedding_type='glove',
-        dimension=100,
-        limit=50000  # Limit to 50k words for faster loading
-    )
+    # First try with offline mode to demonstrate behavior
+    print("Trying with offline_mode=True (will use cached embeddings if available)...")
+    try:
+        glove = processor.load_pretrained_embeddings(
+            embedding_type='glove',
+            dimension=100,
+            limit=50000,  # Limit to 50k words for faster loading
+            offline_mode=True  # Only use cached files
+        )
+        print(f"GloVe vocabulary size: {glove['vocab_size']}")
+    except FileNotFoundError:
+        print("No cached embeddings found. Would need to download with offline_mode=False")
+        
+        # Now try without offline mode
+        print("\nLoading GloVe embeddings (this might take a while)...")
+        glove = processor.load_pretrained_embeddings(
+            embedding_type='glove',
+            dimension=100,
+            limit=50000,  # Limit to 50k words for faster loading
+            offline_mode=False  # Allow download
+        )
+        print(f"GloVe vocabulary size: {glove['vocab_size']}")
+        print(f"GloVe vector dimension: {glove['vector_size']}")
     
-    print(f"GloVe vocabulary size: {glove['vocab_size']}")
-    print(f"GloVe vector dimension: {glove['vector_size']}")
+    # Example of loading from a local file (pointing to a hypothetical file)
+    print("\nExample of how to load from a local file:")
+    print("processor.load_pretrained_embeddings(")
+    print("    embedding_type='glove',")
+    print("    local_path='/path/to/your/glove.6B.100d.txt'")
+    print(")")
     
-    # Create document embeddings with GloVe
-    print("\nCreating document embeddings with GloVe...")
-    glove_doc_embeddings = processor.create_document_embeddings(
-        texts=df['text'].head(10),  # Just use first 10 docs for example
-        word_vectors=glove['wv'],
-        method='mean'
-    )
-    
-    print(f"GloVe document embeddings shape: {glove_doc_embeddings.shape}")
-    
-    # Compare similarities
-    print("\nCalculating document similarity matrix...")
-    similarity_matrix = cosine_similarity(glove_doc_embeddings)
-    
-    print("Document similarity heatmap (first 10 documents):")
-    plt.figure(figsize=(8, 6))
-    plt.imshow(similarity_matrix, cmap='viridis')
-    plt.colorbar(label='Cosine Similarity')
-    plt.title("Document Similarity Matrix")
-    plt.xlabel("Document Index")
-    plt.ylabel("Document Index")
-    plt.savefig('document_similarity_matrix.png')
-    print("Saved similarity matrix visualization to document_similarity_matrix.png")
+    # If we have GloVe embeddings loaded, create document embeddings
+    if 'glove' in locals():
+        # Create document embeddings with GloVe
+        print("\nCreating document embeddings with GloVe...")
+        glove_doc_embeddings = processor.create_document_embeddings(
+            texts=df['text'].head(10),  # Just use first 10 docs for example
+            word_vectors=glove['wv'],
+            method='mean'
+        )
+        
+        print(f"GloVe document embeddings shape: {glove_doc_embeddings.shape}")
+        
+        # Compare similarities
+        print("\nCalculating document similarity matrix...")
+        similarity_matrix = cosine_similarity(glove_doc_embeddings)
+        
+        print("Document similarity heatmap (first 10 documents):")
+        plt.figure(figsize=(8, 6))
+        plt.imshow(similarity_matrix, cmap='viridis')
+        plt.colorbar(label='Cosine Similarity')
+        plt.title("Document Similarity Matrix")
+        plt.xlabel("Document Index")
+        plt.ylabel("Document Index")
+        plt.savefig('document_similarity_matrix.png')
+        print("Saved similarity matrix visualization to document_similarity_matrix.png")
     
 except Exception as e:
-    print(f"Error loading GloVe embeddings: {str(e)}")
-    print("Skipping GloVe example.")
+    print(f"Error working with pretrained embeddings: {str(e)}")
+    print("Skipping pretrained embeddings example.")
 
 # Feature generation with embeddings example
 print("\n=== Text Feature Engineering with Embeddings ===")

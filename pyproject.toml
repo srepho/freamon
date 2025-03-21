@@ -1,95 +1,108 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
 version = "0.3.2"
-description = "A package to make data science projects on tabular data easier"
-readme = "README.md"
 authors = [
-    {name = "Freamon Team"}
+    {name = "The Freamon Team", email = "contact@freamon.ai"},
 ]
-license = {file = "LICENSE"}
+description = "Advanced feature engineering, analysis, modeling and optimization for data science"
+readme = "README.md"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-requires-python = ">=3.10"
+
 dependencies = [
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "matplotlib",
-    "seaborn",
-    "joblib",
-    "category_encoders",
+    "numpy>=1.20.0",
+    "pandas>=1.4.0",
+    "scikit-learn>=1.0.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "pytest-cov",
-    "black",
-    "mypy",
-    "isort",
-    "flake8",
-]
-all = [
-    "lightgbm",
-    "xgboost",
-    "catboost",
-    "spacy",
-    "polars",
-    "dask[dataframe]",
-    "shapiq",
-    "shap",
-    "gensim",
-    "pyarrow",
-]
-lightgbm = [
-    "lightgbm",
-]
-xgboost = [
-    "xgboost",
-]
-catboost = [
-    "catboost",
-]
-nlp = [
-    "spacy",
-    "gensim",
-]
-topic_modeling = [
-    "gensim",
-    "scikit-learn",
-]
-word_embeddings = [
-    "gensim",
-    "scikit-learn",
-]
-polars = [
-    "polars",
-]
-dask = [
-    "dask[dataframe]",
-]
-explainability = [
-    "shapiq",
-    "shap",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.10.0",
+    "mypy>=1.0.0",
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "tox>=4.0.0",
+    "twine>=4.0.0",
+    "check-manifest>=0.48",
+    "pre-commit>=3.0.0",
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
 ]
 
+extended = [
+    "polars>=0.19.0",
+    "pyarrow>=12.0.0",
+    "dask>=2023.0.0",
+    "lightgbm>=4.0.0",
+    "optuna>=3.0.0",
+    "shap>=0.41.0",
+    "category_encoders>=2.5.0",
+    "openpyxl>=3.0.0",
+    "plotly>=5.0.0",
+    "jinja2>=3.0.0",
+    "statsmodels>=0.14.0",
+    "networkx>=3.0",
+    "spacy>=3.0.0",
+    "wordcloud>=1.8.0",
+    "wordfreq>=3.0.0",
+    "adjustText>=0.8",
+    "nltk>=3.8.0",
+    "textblob>=0.17.0",
+]
+
+word_embeddings = [
+    "gensim>=4.0.0",
+    "scikit-learn>=1.0.0",
+    "numpy>=1.20.0",
+    "pandas>=1.4.0",
+    "matplotlib>=3.5.0",
+    "spacy>=3.0.0",
+    "nltk>=3.8.0", 
+]
+
+topic_modeling = [
+    "gensim>=4.0.0",
+    "scikit-learn>=1.0.0",
+    "numpy>=1.20.0",
+    "pandas>=1.4.0",
+    "matplotlib>=3.5.0", 
+    "pyldavis>=3.3.0",
+    "wordcloud>=1.8.0",
+]
+
+all = [
+    "freamon[extended,dev,word_embeddings,topic_modeling]",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+
 [tool.black]
-line-length = 88
-target-version = ["py310", "py311", "py312"]
+line-length = 100
+target-version = ['py38', 'py39', 'py310']
+include = '\.pyi?$'
 
 [tool.isort]
 profile = "black"
-multi_line_output = 3
+line_length = 100
 
 [tool.mypy]
 python_version = "3.10"
@@ -97,6 +110,12 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+strict_optional = true
 
-[tool.pytest.ini_options]
-addopts = ""
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false

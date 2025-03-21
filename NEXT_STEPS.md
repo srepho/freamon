@@ -114,8 +114,6 @@ Based on the roadmap and current status, here are the next development prioritie
 
 ### Remaining Issues to Address
 
-- Topic modeling integration (planned for v0.3.1)
-- Word embedding integration (planned for v0.3.1)
 - Polars integration (time_unit parameter in datetime conversion)
 - ShapIQ-related tests (graceful handling when library not available)
 - Pipeline visualization (handle FeatureEngineer initialization)
@@ -127,8 +125,9 @@ Based on the roadmap and current status, here are the next development prioritie
 
 ### Version 0.3.x Patches
 
-- Version 0.3.1: Implement advanced NLP capabilities (topic modeling, word embeddings)
-- Version 0.3.2: Address technical debt and improve documentation
+- Version 0.3.1: Implement advanced NLP capabilities (topic modeling) ✅
+- Version 0.3.2: Implement word embeddings and address missing value/duplicate handling ✅
+- Version 0.3.3: Address remaining technical debt and improve documentation
 
 ### Version 0.4.0
 
