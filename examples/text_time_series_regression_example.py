@@ -1,0 +1,282 @@
+"""
+Example demonstrating text processing and time series cross-validation for regression.
+
+This example shows how to:
+1. Process a text field using spaCy integration
+2. Create advanced text features
+3. Combine text features with time series features
+4. Use time series cross-validation for regression prediction
+"""
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+from sklearn.ensemble import GradientBoostingRegressor
+
+from freamon.utils.text_utils import TextProcessor
+from freamon.features.time_series_engineer import TimeSeriesFeatureEngineer
+from freamon.model_selection.cross_validation import time_series_cross_validate
+
+
+# Create a synthetic dataset with date, text, and target regression value
+def create_sample_data(n_samples=500):
+    # Generate dates (daily data for past n_samples days)
+    end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = end_date - timedelta(days=n_samples-1)
+    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+    
+    # Generate product review text with varying sentiment
+    products = ['smartphone', 'laptop', 'headphones', 'smartwatch', 'camera', 'tablet']
+    adjectives_positive = ['excellent', 'amazing', 'fantastic', 'great', 'wonderful', 'superb']
+    adjectives_neutral = ['decent', 'acceptable', 'average', 'okay', 'fine', 'standard']
+    adjectives_negative = ['poor', 'terrible', 'disappointing', 'bad', 'awful', 'horrible']
+    
+    # Trend component (increasing over time)
+    trend = np.linspace(50, 100, n_samples)
+    
+    # Weekly seasonality (higher ratings on weekends)
+    day_of_week = np.array([d.weekday() for d in dates])
+    weekly_effect = 5 * (day_of_week >= 5)  # Weekend boost
+    
+    # Create reviews and ratings with noise
+    texts = []
+    sentiment_scores = []
+    
+    for i in range(n_samples):
+        # Determine sentiment direction (with time trend and weekly pattern)
+        base_sentiment = (trend[i] / 100) + (weekly_effect[i] / 100)
+        # Add noise
+        sentiment_with_noise = base_sentiment + np.random.normal(0, 0.15)
+        sentiment_with_noise = max(0.1, min(1.0, sentiment_with_noise))
+        sentiment_scores.append(sentiment_with_noise)
+        
+        # Generate text based on sentiment
+        product = np.random.choice(products)
+        
+        if sentiment_with_noise > 0.7:  # Positive review
+            adj = np.random.choice(adjectives_positive)
+            text = f"This {product} is {adj}. I'm very happy with my purchase. The performance is great and the design is beautiful."
+            if sentiment_with_noise > 0.9:
+                text += " Would definitely recommend to everyone!"
+        elif sentiment_with_noise > 0.4:  # Neutral review
+            adj = np.random.choice(adjectives_neutral)
+            text = f"This {product} is {adj}. It works as expected. The performance is acceptable but could be better."
+        else:  # Negative review
+            adj = np.random.choice(adjectives_negative)
+            text = f"This {product} is {adj}. I'm not satisfied with my purchase. The performance is lacking and the build quality is questionable."
+            if sentiment_with_noise < 0.2:
+                text += " Would not recommend to anyone."
+        
+        # Add some randomness to text length
+        if np.random.rand() > 0.7:
+            features = ["battery life", "display", "speed", "camera", "storage", "connectivity"]
+            feature = np.random.choice(features)
+            if sentiment_with_noise > 0.6:
+                text += f" The {feature} is particularly impressive."
+            elif sentiment_with_noise > 0.4:
+                text += f" The {feature} is adequate."
+            else:
+                text += f" The {feature} is disappointing."
+        
+        texts.append(text)
+    
+    # Create target variable (sales) based on sentiment with noise and lag effect
+    # Higher sentiment leads to better sales with a delay
+    lagged_sentiment = pd.Series(sentiment_scores).shift(7).fillna(0.5).values
+    sales = 100 * lagged_sentiment + 50 * np.array(sentiment_scores) + np.random.normal(0, 10, n_samples)
+    
+    # Combine into a dataframe
+    df = pd.DataFrame({
+        'date': dates,
+        'review_text': texts,
+        'sentiment': sentiment_scores,
+        'sales': sales
+    })
+    
+    return df
+
+
+def main():
+    print("Text Processing with Time Series Regression Example")
+    print("==================================================")
+    
+    # Create sample data
+    df = create_sample_data()
+    print(f"Created sample dataset with {len(df)} rows")
+    print(f"Columns: {df.columns.tolist()}")
+    print("\nSample data:")
+    print(df.head(2))
+    
+    # Initialize TextProcessor with spaCy
+    processor = TextProcessor(use_spacy=True)
+    
+    print("\n1. Basic Text Cleaning")
+    # Apply text preprocessing
+    cleaned_df = processor.process_dataframe_column(
+        df, 
+        'review_text',
+        result_column='cleaned_text',
+        lowercase=True,
+        remove_punctuation=True,
+        remove_stopwords=True,
+        lemmatize=True
+    )
+    
+    # Show example of cleaning
+    print("\nOriginal vs Cleaned Text:")
+    for i in range(2):
+        print(f"\nOriginal: {df['review_text'].iloc[i]}")
+        print(f"Cleaned:  {cleaned_df['cleaned_text'].iloc[i]}")
+    
+    print("\n2. Extract Named Entities with spaCy")
+    # Extract entities from a sample text
+    sample_text = df['review_text'].iloc[0]
+    entities = processor.extract_entities(sample_text)
+    print(f"\nText: {sample_text}")
+    print("Entities found:")
+    for entity_type, entity_list in entities.items():
+        print(f"  {entity_type}: {entity_list}")
+    
+    print("\n3. Generate Text Features")
+    # Create various text features
+    text_features = processor.create_text_features(
+        df, 
+        'review_text',
+        include_stats=True,
+        include_readability=True,
+        include_sentiment=True
+    )
+    
+    print(f"Generated {text_features.shape[1]} text features")
+    print("Feature examples:")
+    for col in sorted(text_features.columns)[:5]:
+        print(f"  {col}: {text_features[col].iloc[0]:.3f}")
+    
+    # Create bag-of-words and TF-IDF features
+    bow_features = processor.create_bow_features(
+        df, 
+        'cleaned_text',
+        max_features=20,
+        binary=False
+    )
+    
+    tfidf_features = processor.create_tfidf_features(
+        df, 
+        'cleaned_text',
+        max_features=20
+    )
+    
+    print(f"\nGenerated {bow_features.shape[1]} bag-of-words features")
+    print(f"Generated {tfidf_features.shape[1]} TF-IDF features")
+    
+    print("\n4. Time Series Feature Engineering")
+    # Create time series features
+    ts_engineer = TimeSeriesFeatureEngineer(df, 'date', 'sales')
+    ts_features = (ts_engineer
+        .create_lag_features(max_lags=7, strategy='auto')
+        .create_rolling_features(windows=[3, 7, 14], metrics=['mean', 'std'])
+        .transform()
+    )
+    
+    # Count time series features
+    ts_feature_columns = [col for col in ts_features.columns 
+                         if col not in df.columns and col.startswith('sales_')]
+    print(f"Generated {len(ts_feature_columns)} time series features")
+    print("Sample time series features:")
+    for col in ts_feature_columns[:3]:
+        print(f"  {col}")
+    
+    print("\n5. Combine Features and Prepare for Modeling")
+    # Combine all features
+    # Remove rows with NaN values (from lag features)
+    X_combined = pd.concat([
+        ts_features,
+        text_features,
+        bow_features.iloc[:, :10],  # Use only top 10 features for simplicity
+        tfidf_features.iloc[:, :10]  # Use only top 10 features for simplicity
+    ], axis=1)
+    X_combined = X_combined.dropna()
+    
+    # Keep only rows with complete data
+    valid_indices = X_combined.index
+    y = df.loc[valid_indices, 'sales']
+    
+    print(f"Final dataset shape: {X_combined.shape}")
+    
+    # Select features for modeling (exclude original columns)
+    feature_columns = [col for col in X_combined.columns 
+                      if col not in ['date', 'review_text', 'cleaned_text', 'sentiment', 'sales']]
+    
+    print("\n6. Time Series Cross-Validation")
+    # Define model creation function for cross-validation
+    def create_model(**kwargs):
+        return GradientBoostingRegressor(n_estimators=100, **kwargs)
+    
+    # Perform time series cross-validation
+    cv_results = time_series_cross_validate(
+        X_combined.reset_index(drop=True),  # Reset index after dropping NaN rows
+        target_column='sales',
+        date_column='date',
+        model_fn=create_model,
+        n_splits=5,
+        problem_type='regression',
+        feature_columns=feature_columns,
+        expanding_window=True,
+        max_depth=3,
+        learning_rate=0.1
+    )
+    
+    print("\nCross-validation results:")
+    for metric, values in cv_results.items():
+        if metric not in ['fold', 'train_size', 'test_size', 'train_start_date', 
+                         'train_end_date', 'test_start_date', 'test_end_date']:
+            print(f"  {metric}: {np.mean(values):.4f} (±{np.std(values):.4f})")
+    
+    print("\n7. Feature Importance Analysis")
+    # Get complete dataset (after dropping NaN values)
+    X = X_combined[feature_columns]
+    
+    # Train a model on all data for feature importance
+    model = GradientBoostingRegressor(n_estimators=100, max_depth=3)
+    model.fit(X, y)
+    
+    # Get feature importances
+    feature_importance = pd.DataFrame({
+        'feature': feature_columns,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False)
+    
+    print("\nTop 10 important features:")
+    for _, row in feature_importance.head(10).iterrows():
+        print(f"  {row['feature']}: {row['importance']:.4f}")
+    
+    print("\n8. Feature Type Analysis")
+    # Categorize features by type
+    text_stat_features = [f for f in feature_importance['feature'] if f.startswith('text_stat_')]
+    text_read_features = [f for f in feature_importance['feature'] if f.startswith('text_read_')]
+    text_sent_features = [f for f in feature_importance['feature'] if f.startswith('text_sent_')]
+    bow_features_list = [f for f in feature_importance['feature'] if f.startswith('bow_')]
+    tfidf_features_list = [f for f in feature_importance['feature'] if f.startswith('tfidf_')]
+    ts_lag_features = [f for f in feature_importance['feature'] if f.startswith('sales_lag_')]
+    ts_rolling_features = [f for f in feature_importance['feature'] if f.startswith('sales_rolling_')]
+    
+    # Calculate total importance by feature type
+    def sum_importance(feature_list):
+        if not feature_list:
+            return 0
+        return feature_importance[feature_importance['feature'].isin(feature_list)]['importance'].sum()
+    
+    print("\nFeature importance by type:")
+    print(f"  Text statistics features: {sum_importance(text_stat_features):.4f}")
+    print(f"  Text readability features: {sum_importance(text_read_features):.4f}")
+    print(f"  Text sentiment features: {sum_importance(text_sent_features):.4f}")
+    print(f"  Bag-of-words features: {sum_importance(bow_features_list):.4f}")
+    print(f"  TF-IDF features: {sum_importance(tfidf_features_list):.4f}")
+    print(f"  Time series lag features: {sum_importance(ts_lag_features):.4f}")
+    print(f"  Time series rolling features: {sum_importance(ts_rolling_features):.4f}")
+    
+    print("\nExample complete!")
+
+
+if __name__ == "__main__":
+    main()
