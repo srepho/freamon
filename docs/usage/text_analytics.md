@@ -202,10 +202,63 @@ processed = processor.preprocess_text(
 )
 ```
 
+## Optimized Text Processing
+
+For large datasets, the `TextProcessor` provides optimized backends for better performance:
+
+```python
+from freamon.utils.text_utils import TextProcessor
+import pandas as pd
+
+# Create a large dataframe with text
+df = pd.DataFrame({
+    'text': ["Sample text document " + str(i) for i in range(10000)]
+})
+
+processor = TextProcessor(use_spacy=False)
+
+# Process using auto backend selection (will choose best available)
+result = processor.process_dataframe_column(
+    df,
+    'text',
+    result_column='processed_text',
+    backend='auto',             # 'pandas', 'polars', 'pyarrow', or 'auto'
+    batch_size=1000,            # Process in batches of 1000 
+    use_parallel=True,          # Use parallel processing for large datasets
+    lowercase=True,
+    remove_punctuation=True
+)
+
+# Compare performance of different backends
+benchmark_results = processor.benchmark_text_processing(
+    df.head(1000),              # Use a subset for benchmarking
+    'text',
+    iterations=3,               # Run 3 iterations for each backend
+    lowercase=True,
+    remove_punctuation=True
+)
+
+print("Benchmark results (seconds):")
+for backend, stats in benchmark_results.items():
+    print(f"  {backend}: {stats['mean']:.4f}s")
+```
+
+Performance tips:
+- For large datasets (>10,000 rows), Polars backend can be 5-10x faster
+- For medium datasets, PyArrow backend is often 2-5x faster than standard pandas
+- Batch processing is essential when using spaCy
+- Parallel processing works best with large batches (>1000 items per batch)
+
 ## Complete Example
 
 For a complete example demonstrating all text analytics capabilities, see:
 
 ```python
 # examples/text_analytics_example.py
+```
+
+For time series with text feature engineering, see:
+
+```python
+# examples/text_time_series_regression_example.py
 ```

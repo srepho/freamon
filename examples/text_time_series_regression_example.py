@@ -152,16 +152,32 @@ def main():
     processor = TextProcessor(use_spacy=True)
     
     print("\n1. Basic Text Cleaning")
-    # Apply text preprocessing
+    # Apply text preprocessing with automatic backend selection
     df = processor.process_dataframe_column(
         df, 
         'review_text',
         result_column='cleaned_text',
+        backend='auto',  # Automatically select the best backend
+        batch_size=100,  # Process in batches of 100 (for spaCy)
+        use_parallel=False,  # Set to True for parallel processing
         lowercase=True,
         remove_punctuation=True,
         remove_stopwords=True,
         lemmatize=True
     )
+    
+    # You can also benchmark different backends
+    print("\nBenchmarking different backends:")
+    if len(df) > 20:  # Only run benchmark if we have enough data
+        # Create a smaller sample for benchmarking
+        benchmark_sample = df.head(min(100, len(df)))
+        benchmark_results = processor.benchmark_text_processing(
+            benchmark_sample,
+            'review_text',
+            iterations=2,  # Run 2 iterations for each backend
+            lowercase=True,
+            remove_punctuation=True
+        )
     
     # Show example of cleaning
     print("\nOriginal vs Cleaned Text:")

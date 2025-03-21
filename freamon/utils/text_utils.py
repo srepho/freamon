@@ -174,10 +174,14 @@ class TextProcessor:
         df: pd.DataFrame,
         column: str,
         result_column: Optional[str] = None,
+        backend: str = 'auto',  # 'pandas', 'polars', 'pyarrow', or 'auto'
+        batch_size: int = 1000,
+        use_parallel: bool = False,
+        n_jobs: int = -1,
         **kwargs
     ) -> pd.DataFrame:
         """
-        Process a text column in a dataframe.
+        Process a text column with optimized backend selection.
         
         Parameters
         ----------
@@ -188,6 +192,18 @@ class TextProcessor:
         result_column : Optional[str], default=None
             The name of the column to store the processed text.
             If None, the original column is overwritten.
+        backend : str, default='auto'
+            The backend to use for processing:
+            - 'pandas': Use standard pandas
+            - 'polars': Use polars (faster for large datasets)
+            - 'pyarrow': Use pandas with PyArrow string type
+            - 'auto': Automatically select the best backend
+        batch_size : int, default=1000
+            Batch size for spaCy processing.
+        use_parallel : bool, default=False
+            Whether to use parallel processing for large datasets.
+        n_jobs : int, default=-1
+            Number of workers for parallel processing. -1 means use all cores.
         **kwargs
             Additional keyword arguments to pass to preprocess_text.
         
@@ -199,19 +215,344 @@ class TextProcessor:
         if column not in df.columns:
             raise ValueError(f"Column '{column}' not found in dataframe.")
         
-        result = df.copy()
-        
-        # Process each text in the column
-        processed_texts = result[column].astype(str).apply(
-            lambda x: self.preprocess_text(x, **kwargs)
-        )
-        
-        # Determine the output column
+        # Determine result column
         if result_column is None:
             result_column = column
         
-        # Store the processed texts
-        result[result_column] = processed_texts
+        # Extract processing parameters
+        lowercase = kwargs.get('lowercase', True)
+        remove_punctuation = kwargs.get('remove_punctuation', True)
+        remove_numbers = kwargs.get('remove_numbers', False)
+        remove_stopwords = kwargs.get('remove_stopwords', False)
+        lemmatize = kwargs.get('lemmatize', False)
+        
+        # Check if we need spaCy
+        needs_spacy = self.use_spacy and self.nlp is not None and (remove_stopwords or lemmatize)
+        
+        # Auto-select backend based on data size and available libraries
+        if backend == 'auto':
+            # For large datasets or simple operations, try using polars or pyarrow
+            if len(df) > 10000 and not needs_spacy:
+                try:
+                    import polars
+                    backend = 'polars'
+                except ImportError:
+                    try:
+                        import pyarrow
+                        backend = 'pyarrow'
+                    except ImportError:
+                        backend = 'pandas'
+            else:
+                backend = 'pandas'
+        
+        # 1. Polars Backend
+        if backend == 'polars':
+            try:
+                import polars as pl
+                # Convert to Polars
+                pl_df = pl.from_pandas(df)
+                
+                if needs_spacy:
+                    # Process with spaCy (using batches)
+                    texts = pl_df[column].fill_null("").cast(pl.Utf8).to_list()
+                    processed_texts = []
+                    
+                    # Process in batches
+                    for i in range(0, len(texts), batch_size):
+                        batch = texts[i:i+batch_size]
+                        
+                        if use_parallel and len(batch) > 100:
+                            # Parallel processing
+                            from concurrent.futures import ProcessPoolExecutor
+                            import multiprocessing
+                            
+                            if n_jobs == -1:
+                                n_jobs = max(1, multiprocessing.cpu_count() - 1)
+                            
+                            # Split batch for parallel processing
+                            chunk_size = max(1, len(batch) // n_jobs)
+                            chunks = [batch[j:j+chunk_size] for j in range(0, len(batch), chunk_size)]
+                            
+                            # Process in parallel
+                            with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                                # Need to create a new processor in each worker
+                                def process_chunk(chunk_texts):
+                                    local_processor = TextProcessor(
+                                        use_spacy=True, 
+                                        spacy_model=self.spacy_model
+                                    )
+                                    return [local_processor.preprocess_text(
+                                        t, 
+                                        lowercase=lowercase,
+                                        remove_punctuation=remove_punctuation,
+                                        remove_numbers=remove_numbers,
+                                        remove_stopwords=remove_stopwords,
+                                        lemmatize=lemmatize
+                                    ) for t in chunk_texts]
+                                
+                                results = list(executor.map(process_chunk, chunks))
+                                batch_results = [text for chunk_result in results for text in chunk_result]
+                        else:
+                            # Sequential batch processing
+                            docs = list(self.nlp.pipe(batch))
+                            batch_results = []
+                            
+                            for doc in docs:
+                                tokens = []
+                                for token in doc:
+                                    # Apply filters
+                                    if remove_stopwords and token.is_stop:
+                                        continue
+                                    if remove_punctuation and token.is_punct:
+                                        continue
+                                    if remove_numbers and token.like_num:
+                                        continue
+                                    
+                                    # Apply transformations
+                                    token_text = token.lemma_ if lemmatize else token.text
+                                    token_text = token_text.lower() if lowercase else token_text
+                                    
+                                    tokens.append(token_text)
+                                
+                                batch_results.append(" ".join(tokens))
+                        
+                        processed_texts.extend(batch_results)
+                    
+                    # Add processed texts to DataFrame (support both old and new Polars API)
+                    try:
+                        # Try new API first
+                        pl_df = pl_df.with_columns(pl.Series(name=result_column, values=processed_texts))
+                    except AttributeError:
+                        # Fall back to old API
+                        pl_df = pl_df.with_column(pl.Series(name=result_column, values=processed_texts))
+                else:
+                    # Use Polars' native string operations
+                    text_col = pl_df[column].fill_null("").cast(pl.Utf8)
+                    
+                    if lowercase:
+                        text_col = text_col.str.to_lowercase()
+                    
+                    if remove_punctuation:
+                        text_col = text_col.str.replace_all(r'[^\w\s]', "", literal=False)
+                    
+                    if remove_numbers:
+                        text_col = text_col.str.replace_all(r'\d+', "", literal=False)
+                    
+                    # Clean up whitespace (replace multiple spaces with single space)
+                    text_col = text_col.str.replace_all(r'\s+', " ", literal=False)
+                    # Trim whitespace (Polars equivalent of strip)
+                    text_col = text_col.str.strip_chars()
+                    
+                    # Add the processed column (support both old and new Polars API)
+                    try:
+                        # Try new API first
+                        pl_df = pl_df.with_columns(text_col.alias(result_column))
+                    except AttributeError:
+                        # Fall back to old API
+                        pl_df = pl_df.with_column(text_col.alias(result_column))
+                
+                # Convert back to pandas
+                return pl_df.to_pandas()
+                
+            except ImportError:
+                # If Polars is not available, fall back to pandas
+                backend = 'pandas'
+        
+        # 2. PyArrow Backend
+        if backend == 'pyarrow':
+            try:
+                import pyarrow
+                
+                # Create shallow copy unless overwriting
+                if result_column == column:
+                    result = df
+                else:
+                    result = df.copy(deep=False)
+                
+                if needs_spacy:
+                    # For spaCy, we still need to process sequentially or in batches
+                    texts = result[column].fillna("").astype(str).to_numpy()
+                    
+                    # Similar batching logic as in the polars case
+                    processed_texts = []
+                    for i in range(0, len(texts), batch_size):
+                        batch = texts[i:i+batch_size]
+                        # Process the batch with spaCy
+                        if use_parallel and len(batch) > 100:
+                            # Parallel processing
+                            from concurrent.futures import ProcessPoolExecutor
+                            import multiprocessing
+                            
+                            if n_jobs == -1:
+                                n_jobs = max(1, multiprocessing.cpu_count() - 1)
+                            
+                            # Split batch for parallel processing
+                            chunk_size = max(1, len(batch) // n_jobs)
+                            chunks = [batch[j:j+chunk_size] for j in range(0, len(batch), chunk_size)]
+                            
+                            # Process in parallel
+                            with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                                def process_chunk(chunk_texts):
+                                    local_processor = TextProcessor(
+                                        use_spacy=True, 
+                                        spacy_model=self.spacy_model
+                                    )
+                                    return [local_processor.preprocess_text(
+                                        t, 
+                                        lowercase=lowercase,
+                                        remove_punctuation=remove_punctuation,
+                                        remove_numbers=remove_numbers,
+                                        remove_stopwords=remove_stopwords,
+                                        lemmatize=lemmatize
+                                    ) for t in chunk_texts]
+                                
+                                results = list(executor.map(process_chunk, chunks))
+                                batch_results = [text for chunk_result in results for text in chunk_result]
+                        else:
+                            # Sequential batch processing
+                            docs = list(self.nlp.pipe(batch))
+                            batch_results = []
+                            
+                            for doc in docs:
+                                tokens = []
+                                for token in doc:
+                                    # Apply filters
+                                    if remove_stopwords and token.is_stop:
+                                        continue
+                                    if remove_punctuation and token.is_punct:
+                                        continue
+                                    if remove_numbers and token.like_num:
+                                        continue
+                                    
+                                    # Apply transformations
+                                    token_text = token.lemma_ if lemmatize else token.text
+                                    token_text = token_text.lower() if lowercase else token_text
+                                    
+                                    tokens.append(token_text)
+                                
+                                batch_results.append(" ".join(tokens))
+                        
+                        processed_texts.extend(batch_results)
+                    
+                    # Convert to PyArrow string type
+                    result[result_column] = pd.Series(processed_texts, index=result.index).astype("string[pyarrow]")
+                else:
+                    # Use PyArrow-backed string operations
+                    text_series = result[column].fillna("").astype("string[pyarrow]")
+                    
+                    # Apply transformations
+                    if lowercase:
+                        text_series = text_series.str.lower()
+                    
+                    if remove_punctuation:
+                        text_series = text_series.str.replace(r'[^\w\s]', "", regex=True)
+                    
+                    if remove_numbers:
+                        text_series = text_series.str.replace(r'\d+', "", regex=True)
+                    
+                    text_series = text_series.str.replace(r'\s+', " ", regex=True).str.strip()
+                    
+                    result[result_column] = text_series
+                
+                return result
+                
+            except (ImportError, TypeError):
+                # TypeError can occur if pandas version doesn't support PyArrow strings
+                # If PyArrow is not available, fall back to pandas
+                backend = 'pandas'
+        
+        # 3. Standard Pandas Backend (fallback)
+        # Use shallow copy unless overwriting
+        if result_column == column:
+            result = df
+        else:
+            result = df.copy(deep=False)
+        
+        if needs_spacy:
+            # Process with spaCy using batches
+            texts = result[column].fillna("").astype(str).tolist()
+            processed_texts = []
+            
+            # Process in batches
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i+batch_size]
+                
+                # Parallel processing if requested and batch is large enough
+                if use_parallel and len(batch) > 100:
+                    from concurrent.futures import ProcessPoolExecutor
+                    import multiprocessing
+                    
+                    if n_jobs == -1:
+                        n_jobs = max(1, multiprocessing.cpu_count() - 1)
+                    
+                    # Split batch for parallel processing
+                    chunk_size = max(1, len(batch) // n_jobs)
+                    chunks = [batch[j:j+chunk_size] for j in range(0, len(batch), chunk_size)]
+                    
+                    # Process in parallel
+                    with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                        def process_chunk(chunk_texts):
+                            local_processor = TextProcessor(
+                                use_spacy=True, 
+                                spacy_model=self.spacy_model
+                            )
+                            return [local_processor.preprocess_text(
+                                t, 
+                                lowercase=lowercase,
+                                remove_punctuation=remove_punctuation,
+                                remove_numbers=remove_numbers,
+                                remove_stopwords=remove_stopwords,
+                                lemmatize=lemmatize
+                            ) for t in chunk_texts]
+                        
+                        results = list(executor.map(process_chunk, chunks))
+                        batch_results = [text for chunk_result in results for text in chunk_result]
+                else:
+                    # Sequential batch processing
+                    docs = list(self.nlp.pipe(batch))
+                    batch_results = []
+                    
+                    for doc in docs:
+                        tokens = []
+                        for token in doc:
+                            # Apply filters
+                            if remove_stopwords and token.is_stop:
+                                continue
+                            if remove_punctuation and token.is_punct:
+                                continue
+                            if remove_numbers and token.like_num:
+                                continue
+                            
+                            # Apply transformations
+                            token_text = token.lemma_ if lemmatize else token.text
+                            token_text = token_text.lower() if lowercase else token_text
+                            
+                            tokens.append(token_text)
+                        
+                        batch_results.append(" ".join(tokens))
+                
+                processed_texts.extend(batch_results)
+            
+            result[result_column] = processed_texts
+        else:
+            # Use pandas vectorized operations
+            text_series = result[column].fillna("")
+            
+            if lowercase:
+                text_series = text_series.str.lower()
+            
+            if remove_punctuation:
+                # Optimize with translate for better performance
+                import string
+                punct_table = str.maketrans("", "", string.punctuation)
+                text_series = text_series.apply(lambda x: str(x).translate(punct_table))
+            
+            if remove_numbers:
+                text_series = text_series.str.replace(r'\d+', '', regex=True)
+            
+            text_series = text_series.str.replace(r'\s+', ' ', regex=True).str.strip()
+            
+            result[result_column] = text_series
         
         return result
     
@@ -814,6 +1155,95 @@ class TextProcessor:
             raise ValueError(f"Unknown similarity method: {method}. "
                             "Supported methods are: 'cosine', 'jaccard', 'overlap'.")
             
+    def benchmark_text_processing(
+        self,
+        df: pd.DataFrame,
+        column: str,
+        iterations: int = 3,
+        **kwargs
+    ) -> dict:
+        """
+        Benchmark different text processing backends.
+        
+        Parameters
+        ----------
+        df : pd.DataFrame
+            The dataframe containing the text column.
+        column : str
+            The name of the column to process.
+        iterations : int, default=3
+            Number of times to run each benchmark.
+        **kwargs
+            Additional keyword arguments to pass to process_dataframe_column.
+        
+        Returns
+        -------
+        dict
+            Dictionary with results for each backend.
+        """
+        import time
+        import gc
+        
+        def get_available_backends():
+            """Helper to determine available backends."""
+            available = ['pandas']  # Always available
+            
+            # Check if polars is available
+            try:
+                import polars
+                available.append('polars')
+            except ImportError:
+                pass
+            
+            # Check if pyarrow is available
+            try:
+                import pyarrow
+                try:
+                    # Try to use PyArrow string type
+                    pd.Series(["test"]).astype("string[pyarrow]")
+                    available.append('pyarrow')
+                except (TypeError, ValueError):
+                    pass
+            except ImportError:
+                pass
+            
+            return available
+        
+        # Get available backends
+        backends = get_available_backends()
+        
+        results = {}
+        
+        for backend in backends:
+            times = []
+            for _ in range(iterations):
+                # Clean memory
+                gc.collect()
+                
+                # Time the operation
+                start_time = time.time()
+                _ = self.process_dataframe_column(
+                    df, column, backend=backend, **kwargs
+                )
+                end_time = time.time()
+                
+                times.append(end_time - start_time)
+            
+            # Calculate statistics
+            results[backend] = {
+                'mean': sum(times) / len(times),
+                'min': min(times),
+                'max': max(times),
+                'times': times
+            }
+        
+        # Print results
+        print(f"Benchmarking results (seconds):")
+        for backend, stats in results.items():
+            print(f"  {backend}: {stats['mean']:.4f}s (min: {stats['min']:.4f}s, max: {stats['max']:.4f}s)")
+        
+        return results
+    
     def create_text_features(
         self,
         df: pd.DataFrame,
