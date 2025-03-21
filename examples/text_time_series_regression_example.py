@@ -11,11 +11,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from sklearn.ensemble import GradientBoostingRegressor
 
 from freamon.utils.text_utils import TextProcessor
 from freamon.features.time_series_engineer import TimeSeriesFeatureEngineer
 from freamon.model_selection.cross_validation import time_series_cross_validate
+from freamon.modeling.factory import create_model
 
 
 # Create a synthetic dataset with date, text, and target regression value
@@ -112,7 +112,7 @@ def main():
     
     print("\n1. Basic Text Cleaning")
     # Apply text preprocessing
-    cleaned_df = processor.process_dataframe_column(
+    df = processor.process_dataframe_column(
         df, 
         'review_text',
         result_column='cleaned_text',
@@ -126,7 +126,7 @@ def main():
     print("\nOriginal vs Cleaned Text:")
     for i in range(2):
         print(f"\nOriginal: {df['review_text'].iloc[i]}")
-        print(f"Cleaned:  {cleaned_df['cleaned_text'].iloc[i]}")
+        print(f"Cleaned:  {df['cleaned_text'].iloc[i]}")
     
     print("\n2. Extract Named Entities with spaCy")
     # Extract entities from a sample text
@@ -170,12 +170,26 @@ def main():
     print(f"Generated {tfidf_features.shape[1]} TF-IDF features")
     
     print("\n4. Time Series Feature Engineering")
-    # Create time series features
-    ts_engineer = TimeSeriesFeatureEngineer(df, 'date', 'sales')
-    ts_features = (ts_engineer
-        .create_lag_features(max_lags=7, strategy='auto')
-        .create_rolling_features(windows=[3, 7, 14], metrics=['mean', 'std'])
-        .transform()
+    # Create time series features manually instead
+    from freamon.features.time_series_engineer import create_auto_lag_features, create_auto_rolling_features
+    
+    # Add lag features
+    ts_features = create_auto_lag_features(
+        df, 
+        target_cols='sales',
+        date_col='date',
+        max_lags=7, 
+        strategy='all'  # Use all lags instead of auto for reliability
+    )
+    
+    # Add rolling features
+    ts_features = create_auto_rolling_features(
+        ts_features,
+        target_cols='sales',
+        date_col='date',
+        windows=[3, 7, 14],
+        metrics=['mean', 'std'],
+        auto_detect=False
     )
     
     # Count time series features
@@ -209,21 +223,25 @@ def main():
     
     print("\n6. Time Series Cross-Validation")
     # Define model creation function for cross-validation
-    def create_model(**kwargs):
-        return GradientBoostingRegressor(n_estimators=100, **kwargs)
+    def create_lightgbm_model(**kwargs):
+        from sklearn.ensemble import GradientBoostingRegressor
+        return GradientBoostingRegressor(
+            n_estimators=100,
+            max_depth=3,
+            learning_rate=0.1,
+            **kwargs
+        )
     
     # Perform time series cross-validation
     cv_results = time_series_cross_validate(
         X_combined.reset_index(drop=True),  # Reset index after dropping NaN rows
         target_column='sales',
         date_column='date',
-        model_fn=create_model,
+        model_fn=create_lightgbm_model,
         n_splits=5,
         problem_type='regression',
         feature_columns=feature_columns,
-        expanding_window=True,
-        max_depth=3,
-        learning_rate=0.1
+        expanding_window=True
     )
     
     print("\nCross-validation results:")
@@ -237,13 +255,19 @@ def main():
     X = X_combined[feature_columns]
     
     # Train a model on all data for feature importance
-    model = GradientBoostingRegressor(n_estimators=100, max_depth=3)
+    from sklearn.ensemble import GradientBoostingRegressor
+    model = GradientBoostingRegressor(
+        n_estimators=100,
+        max_depth=3,
+        learning_rate=0.1
+    )
     model.fit(X, y)
     
     # Get feature importances
+    importances = model.feature_importances_
     feature_importance = pd.DataFrame({
         'feature': feature_columns,
-        'importance': model.feature_importances_
+        'importance': importances
     }).sort_values('importance', ascending=False)
     
     print("\nTop 10 important features:")
