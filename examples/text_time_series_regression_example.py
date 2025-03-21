@@ -15,7 +15,43 @@ from datetime import datetime, timedelta
 from freamon.utils.text_utils import TextProcessor
 from freamon.features.time_series_engineer import TimeSeriesFeatureEngineer
 from freamon.model_selection.cross_validation import time_series_cross_validate
-from freamon.modeling.factory import create_model
+from freamon.modeling import create_lightgbm_regressor, LightGBMModel
+
+
+# Helper functions for modeling
+def get_lightgbm_model(problem_type='regression', **kwargs):
+    """Utility function to create a LightGBM model with sensible defaults.
+    
+    This demonstrates how to create a helper function to simplify model creation.
+    
+    Parameters
+    ----------
+    problem_type : str, default='regression'
+        The type of problem ('regression' or 'classification')
+    **kwargs : dict
+        Additional parameters to pass to the model constructor
+        
+    Returns
+    -------
+    Model
+        A configured LightGBM model ready to use
+    """
+    from freamon.modeling import create_lightgbm_regressor, create_lightgbm_classifier
+    
+    default_params = {
+        'n_estimators': 100,
+        'max_depth': 3,
+        'learning_rate': 0.1,
+        'random_state': 42,
+    }
+    
+    # Update defaults with any user-provided parameters
+    params = {**default_params, **kwargs}
+    
+    if problem_type == 'regression':
+        return create_lightgbm_regressor(**params)
+    else:
+        return create_lightgbm_classifier(**params)
 
 
 # Create a synthetic dataset with date, text, and target regression value
@@ -224,8 +260,10 @@ def main():
     print("\n6. Time Series Cross-Validation")
     # Define model creation function for cross-validation
     def create_lightgbm_model(**kwargs):
-        from sklearn.ensemble import GradientBoostingRegressor
-        return GradientBoostingRegressor(
+        # Using our helper function for simplicity
+        # The time_series_cross_validate function expects a model instance, not a wrapped model
+        from lightgbm import LGBMRegressor
+        return LGBMRegressor(
             n_estimators=100,
             max_depth=3,
             learning_rate=0.1,
@@ -254,13 +292,24 @@ def main():
     # Get complete dataset (after dropping NaN values)
     X = X_combined[feature_columns]
     
-    # Train a model on all data for feature importance
-    from sklearn.ensemble import GradientBoostingRegressor
-    model = GradientBoostingRegressor(
+    # Train a model on all data for feature importance using our helper function
+    model_lgb = get_lightgbm_model(
+        problem_type='regression',
+        n_estimators=100,
+        max_depth=3
+    )
+    
+    # If you prefer to use LightGBM directly, you could use this instead:
+    from lightgbm import LGBMRegressor
+    model = LGBMRegressor(
+        objective='regression',
         n_estimators=100,
         max_depth=3,
-        learning_rate=0.1
+        learning_rate=0.1,
+        random_state=42
     )
+    
+    # Use direct LightGBM model for simplicity
     model.fit(X, y)
     
     # Get feature importances

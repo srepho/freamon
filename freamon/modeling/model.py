@@ -81,12 +81,17 @@ class Model:
         elif self.model_type == 'lightgbm':
             # For LightGBM, we need to handle eval_set differently
             if eval_set is not None:
-                X_val, y_val = eval_set
-                self.model.fit(
-                    X, y,
-                    eval_set=[(X_val, y_val)],
-                    **kwargs
-                )
+                # Check if eval_set is already a list of tuples
+                if isinstance(eval_set, list) and all(isinstance(x, tuple) for x in eval_set):
+                    self.model.fit(X, y, eval_set=eval_set, **kwargs)
+                else:
+                    # Assume it's a single validation set tuple
+                    X_val, y_val = eval_set
+                    self.model.fit(
+                        X, y,
+                        eval_set=[(X_val, y_val)],
+                        **kwargs
+                    )
             else:
                 self.model.fit(X, y, **kwargs)
         

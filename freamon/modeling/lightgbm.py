@@ -148,6 +148,7 @@ class LightGBMModel:
         self.is_fitted = False
         self.feature_names = None
         self.categorical_features = None
+        self.fixed_params = None  # Will store default params if not tuning
     
     def fit(
         self,
@@ -233,7 +234,9 @@ class LightGBMModel:
             else:
                 model_name = 'LGBMRegressor'
             
-            params = fixed_params or {}
+            # Start with either fixed_params from method arg, or from instance, or empty dict
+            params = fixed_params or self.fixed_params or {}
+            
             if self.objective is not None:
                 params['objective'] = self.objective
             if self.random_state is not None:
