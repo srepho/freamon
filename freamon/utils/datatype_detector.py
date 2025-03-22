@@ -5,6 +5,7 @@ import re
 import os
 import math
 import logging
+import warnings
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable, Iterator, TypeVar
 
@@ -13,6 +14,9 @@ import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Filter common pandas warnings about date parsing
+warnings.filterwarnings("ignore", message="Could not infer format, so each element will be parsed individually")
 
 
 class DataTypeDetector:
