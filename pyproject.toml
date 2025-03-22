@@ -87,6 +87,10 @@ topic_modeling = [
 ]
 
 all = [
+    "freamon[extended,word_embeddings,topic_modeling]",
+]
+
+full = [
     "freamon[extended,dev,word_embeddings,topic_modeling]",
 ]
 

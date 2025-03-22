@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="freamon",
-    version="0.3.0",
+    version="0.3.2",
     packages=find_packages(),
     install_requires=[
         "numpy",
@@ -36,6 +36,24 @@ setup(
             "shap",
             "optuna>=3.0.0",
             "plotly",
+        ],
+        "full": [
+            "lightgbm",
+            "xgboost",
+            "catboost",
+            "spacy",
+            "polars",
+            "dask[dataframe]",
+            "shapiq",
+            "shap",
+            "optuna>=3.0.0",
+            "plotly",
+            "pytest",
+            "pytest-cov",
+            "black",
+            "mypy",
+            "isort",
+            "flake8",
         ],
         "lightgbm": [
             "lightgbm",

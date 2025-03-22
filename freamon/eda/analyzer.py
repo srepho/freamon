@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from freamon.utils import check_dataframe_type, convert_dataframe
+from freamon.utils.datatype_detector import DataTypeDetector
 from freamon.eda.univariate import (
     analyze_numeric,
     analyze_categorical,
@@ -70,9 +71,25 @@ class EDAAnalyzer:
         df: Any,
         target_column: Optional[str] = None,
         date_column: Optional[str] = None,
+        custom_patterns: Optional[Dict[str, str]] = None,
     ):
-        """Initialize the EDAAnalyzer."""
+        """
+        Initialize the EDAAnalyzer.
+        
+        Parameters
+        ----------
+        df : Any
+            The dataframe to analyze. Can be pandas, polars, or dask.
+        target_column : Optional[str], default=None
+            The name of the target column for supervised learning analysis.
+        date_column : Optional[str], default=None
+            The name of the datetime column for time series analysis.
+        custom_patterns : Optional[Dict[str, str]], default=None
+            Dictionary of custom regex patterns for semantic type detection
+            in the format {'type_name': 'regex_pattern'}.
+        """
         self.dataframe_type = check_dataframe_type(df)
+        self.custom_patterns = custom_patterns
         
         # Convert to pandas for analysis
         if self.dataframe_type != 'pandas':
@@ -101,21 +118,41 @@ class EDAAnalyzer:
         self.analysis_results = {}
     
     def _set_column_types(self) -> None:
-        """Identify numeric, categorical, and datetime columns."""
-        # Numeric columns (int and float)
-        self.numeric_columns = self.df.select_dtypes(
-            include=['int8', 'int16', 'int32', 'int64', 'float32', 'float64']
-        ).columns.tolist()
+        """Identify numeric, categorical, and datetime columns with advanced type detection."""
+        # Use advanced type detection with custom patterns if provided
+        detector = DataTypeDetector(
+            self.df,
+            custom_patterns=self.custom_patterns
+        )
+        detected_types = detector.detect_all_types()
         
-        # Categorical columns (object, category, and bool)
-        self.categorical_columns = self.df.select_dtypes(
-            include=['object', 'category', 'bool']
-        ).columns.tolist()
+        # Store the detected types for reference
+        self.detected_types = detected_types
         
-        # Datetime columns
-        self.datetime_columns = self.df.select_dtypes(
-            include=['datetime64']
-        ).columns.tolist()
+        # Initialize column type lists
+        self.numeric_columns = []
+        self.categorical_columns = []
+        self.datetime_columns = []
+        
+        # Classify columns based on detected logical type
+        for col, info in detected_types.items():
+            logical_type = info.get('logical_type', 'unknown')
+            
+            if logical_type in ['datetime']:
+                self.datetime_columns.append(col)
+            elif logical_type in ['integer', 'float', 'continuous_integer', 'continuous_float']:
+                self.numeric_columns.append(col)
+            elif logical_type in ['categorical', 'categorical_integer', 'categorical_float', 'boolean', 'string']:
+                self.categorical_columns.append(col)
+            else:
+                # Fallback to basic type detection based on storage type
+                dtype = self.df[col].dtype
+                if pd.api.types.is_numeric_dtype(dtype):
+                    self.numeric_columns.append(col)
+                elif pd.api.types.is_datetime64_dtype(dtype):
+                    self.datetime_columns.append(col)
+                else:
+                    self.categorical_columns.append(col)
         
         # If date_column is specified but not detected as datetime, try to convert
         if (
@@ -160,6 +197,28 @@ class EDAAnalyzer:
         stats["numeric_columns"] = self.numeric_columns
         stats["categorical_columns"] = self.categorical_columns
         stats["datetime_columns"] = self.datetime_columns
+        
+        # Add detected types information if available
+        if hasattr(self, 'detected_types'):
+            stats["detected_types"] = self.detected_types
+            
+            # Extract semantic types for easier reference
+            semantic_types = {}
+            for col, info in self.detected_types.items():
+                if 'semantic_type' in info:
+                    semantic_types[col] = info['semantic_type']
+            
+            if semantic_types:
+                stats["semantic_types"] = semantic_types
+            
+            # Extract conversion suggestions
+            conversion_suggestions = {}
+            for col, info in self.detected_types.items():
+                if 'suggested_conversion' in info:
+                    conversion_suggestions[col] = info['suggested_conversion']
+            
+            if conversion_suggestions:
+                stats["conversion_suggestions"] = conversion_suggestions
         
         # Calculate missing values by column
         missing_by_col = self.df.isna().sum()

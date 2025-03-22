@@ -7,11 +7,12 @@
 [![PyPI version](https://img.shields.io/pypi/v/freamon.svg)](https://pypi.org/project/freamon/)
 [![GitHub release](https://img.shields.io/github/v/release/srepho/freamon)](https://github.com/srepho/freamon/releases)
 
-A package to make data science projects on tabular data easier. Named after the great character from The Wire played by Clarke Peters.
+A package to make data science projects on tabular data easier. Named after the great character from The Wire played by Clarke Peters. Featuring advanced data type detection with support for Australian data patterns.
 
 ## Features
 
 - **Data Quality Assessment:** Missing values, outliers, data types, duplicates
+- **Advanced Data Type Detection:** Semantic type identification including Australian-specific data patterns (postcodes, ABNs, ACNs, phone numbers)
 - **Exploratory Data Analysis (EDA):** Statistical analysis and visualizations
 - **Feature Engineering:** 
   - **Standard Features:** Polynomial, interaction, datetime, binned features
@@ -49,8 +50,11 @@ A package to make data science projects on tabular data easier. Named after the 
 # Basic installation
 pip install freamon
 
-# With all optional dependencies
+# With all optional dependencies (no development tools)
 pip install freamon[all]
+
+# With all dependencies including development tools
+pip install freamon[full]
 
 # With specific optional dependencies
 pip install freamon[lightgbm]        # For LightGBM support
@@ -66,7 +70,7 @@ pip install freamon[tuning]          # For hyperparameter tuning support
 # Development installation
 git clone https://github.com/yourusername/freamon.git
 cd freamon
-pip install -e ".[dev,all]"
+pip install -e ".[dev,all]"  # Or use pip install -e ".[full]" for all dependencies
 ```
 
 ## Quick Start
@@ -487,7 +491,11 @@ python example_name.py
 To contribute to freamon, install the development dependencies:
 
 ```bash
+# Install development dependencies only
 pip install -e ".[dev]"
+
+# Install all dependencies (including dev tools)
+pip install -e ".[full]"
 ```
 
 Run tests:
@@ -498,6 +506,9 @@ pytest
 
 # Run with coverage
 pytest --cov=freamon
+
+# Run specific tests
+pytest tests/test_datatype_detector_performance.py
 ```
 
 ## License

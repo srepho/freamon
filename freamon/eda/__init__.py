@@ -24,6 +24,11 @@ from freamon.eda.multivariate import (
 )
 from freamon.eda.report import generate_html_report
 from freamon.eda.explainability_report import generate_interaction_report
+from freamon.utils.datatype_detector import (
+    DataTypeDetector,
+    detect_column_types,
+    optimize_dataframe_types,
+)
 
 __all__ = [
     "EDAAnalyzer",
@@ -40,4 +45,7 @@ __all__ = [
     "perform_tsne",
     "generate_html_report",
     "generate_interaction_report",
+    "DataTypeDetector",
+    "detect_column_types",
+    "optimize_dataframe_types",
 ]
