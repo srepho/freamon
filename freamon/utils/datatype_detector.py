@@ -25,7 +25,7 @@ class DataTypeDetector:
     
     This class provides methods to detect logical data types beyond the
     basic storage types, including IDs, zip codes, phone numbers, addresses,
-    and distinguishing between categorical and continuous numeric features.
+    Excel dates, and distinguishing between categorical and continuous numeric features.
     
     Parameters
     ----------
@@ -39,6 +39,8 @@ class DataTypeDetector:
         Whether to detect semantic types like IDs, codes, etc.
     categorize_numeric : bool, default=True
         Whether to distinguish between categorical and continuous numeric columns
+    custom_patterns : Optional[Dict[str, str]], default=None
+        Dictionary of custom regex patterns to use for semantic type detection
     """
     
     def __init__(
@@ -236,9 +238,9 @@ class DataTypeDetector:
                         except (ValueError, TypeError):
                             continue
         
-        # Look for timestamps in integer columns
+        # Look for timestamps in integer columns and for Excel dates in numeric columns
         for col in self.df.columns:
-            if self.column_types.get(col) == 'integer':
+            if self.column_types.get(col) in ['integer', 'float']:
                 # Check for column names that suggest it might be an ID
                 # Skip non-string column names (e.g., integers)
                 if not isinstance(col, str):
@@ -248,29 +250,70 @@ class DataTypeDetector:
                     continue
                 
                 values = self.df[col].dropna()
+                if len(values) == 0:
+                    continue
+                    
                 if self.sample_size > 0 and len(values) > self.sample_size:
                     values = values.sample(self.sample_size, random_state=42)
                 
-                # Skip very small values (likely IDs, not timestamps)
-                if values.min() < 1000000:  # Timestamp for 1970-01-12
-                    continue
+                # PART 1: Check for Unix timestamps (large integer values)
+                if self.column_types.get(col) == 'integer' and values.min() >= 1000000:
+                    # Check if values are in a reasonable unix timestamp range
+                    min_timestamp = datetime(1970, 1, 1).timestamp()
+                    max_timestamp = datetime(2050, 1, 1).timestamp()
+                    
+                    if ((values >= min_timestamp) & (values <= max_timestamp)).mean() >= self.threshold:
+                        # Try converting to datetime
+                        try:
+                            parsed = pd.to_datetime(values, unit='s', errors='coerce')
+                            if parsed.notna().mean() >= self.threshold:
+                                self.column_types[col] = 'datetime'
+                                self.conversion_suggestions[col] = {
+                                    'convert_to': 'datetime',
+                                    'method': 'pd.to_datetime(unit="s")'
+                                }
+                        except (ValueError, OverflowError, TypeError):
+                            pass
                 
-                # Check if values are in a reasonable unix timestamp range
-                min_timestamp = datetime(1970, 1, 1).timestamp()
-                max_timestamp = datetime(2050, 1, 1).timestamp()
-                
-                if ((values >= min_timestamp) & (values <= max_timestamp)).mean() >= self.threshold:
-                    # Try converting to datetime
-                    try:
-                        parsed = pd.to_datetime(values, unit='s', errors='coerce')
-                        if parsed.notna().mean() >= self.threshold:
-                            self.column_types[col] = 'datetime'
-                            self.conversion_suggestions[col] = {
-                                'convert_to': 'datetime',
-                                'method': 'pd.to_datetime(unit="s")'
-                            }
-                    except (ValueError, OverflowError, TypeError):
-                        pass
+                # PART 2: Check for Excel dates (numerical representation of dates)
+                # Excel dates are stored as days since 1899-12-30 (with some adjustments)
+                # Typically in the range of ~25000-50000 for modern dates (2000-2050)
+                if self.column_types.get(col) in ['integer', 'float'] and 'datetime' not in self.column_types.get(col, ''):
+                    # Skip large values (likely not Excel dates)
+                    if values.min() < 0 or values.max() > 50000:
+                        continue
+                    
+                    # Excel dates are typically in this range for dates after 1970
+                    excel_date_min = 25569  # 1970-01-01 in Excel date format
+                    excel_date_max = 47482  # 2030-01-01 in Excel date format
+                    
+                    # Check if the values are within typical Excel date range
+                    values_in_range = ((values >= excel_date_min) & (values <= excel_date_max))
+                    ratio_in_range = values_in_range.mean()
+                    
+                    if ratio_in_range >= self.threshold:
+                        # Try to convert a sample to dates to verify they're valid
+                        try:
+                            # Convert to Excel dates (origin='1899-12-30')
+                            sample_dates = pd.to_datetime(values.head(min(20, len(values))), unit='D', origin='1899-12-30')
+                            
+                            # Check for realistic date distribution
+                            years = sample_dates.dt.year
+                            # Modern dates should have years after 1970 in most cases
+                            modern_years_ratio = (years >= 1970).mean()
+                            # Years should be reasonable (not in future by much)
+                            reasonable_years_ratio = (years <= datetime.now().year + 5).mean()
+                            
+                            if modern_years_ratio >= 0.8 and reasonable_years_ratio >= 0.8:
+                                # It's very likely an Excel date
+                                self.column_types[col] = 'datetime'
+                                self.semantic_types[col] = 'excel_date'
+                                self.conversion_suggestions[col] = {
+                                    'convert_to': 'datetime',
+                                    'method': 'pd.to_datetime(unit="D", origin="1899-12-30")'
+                                }
+                        except (ValueError, OverflowError, TypeError):
+                            pass
     
     def _detect_categorical_numeric(self) -> None:
         """
@@ -588,10 +631,24 @@ class DataTypeDetector:
             
             try:
                 if target_type == 'datetime':
-                    if 'unit=' in suggestion['method']:
+                    if 'unit=' in suggestion['method'] and 'origin=' in suggestion['method']:
+                        # Excel date conversion
+                        if 'origin="1899-12-30"' in suggestion['method']:
+                            df_converted[col] = pd.to_datetime(df_converted[col], unit='D', origin='1899-12-30', errors='coerce')
+                        else:
+                            # Extract parameters from the method string
+                            unit_match = re.search(r'unit="([^"]+)"', suggestion['method'])
+                            origin_match = re.search(r'origin="([^"]+)"', suggestion['method'])
+                            
+                            unit = unit_match.group(1) if unit_match else 'D'
+                            origin = origin_match.group(1) if origin_match else '1899-12-30'
+                            
+                            df_converted[col] = pd.to_datetime(df_converted[col], unit=unit, origin=origin, errors='coerce')
+                    elif 'unit=' in suggestion['method']:
+                        # Unix timestamp conversion
                         df_converted[col] = pd.to_datetime(df_converted[col], unit='s', errors='coerce')
                     elif 'format=' in suggestion['method']:
-                        # Extract format from the suggestion
+                        # String date with specific format
                         format_match = re.search(r'format="([^"]+)"', suggestion['method'])
                         if format_match:
                             date_format = format_match.group(1)
@@ -599,6 +656,7 @@ class DataTypeDetector:
                         else:
                             df_converted[col] = pd.to_datetime(df_converted[col], errors='coerce')
                     else:
+                        # Default conversion
                         df_converted[col] = pd.to_datetime(df_converted[col], errors='coerce')
                 elif target_type == 'str_padded':
                     # For Australian postcodes or similar that need zero-padding

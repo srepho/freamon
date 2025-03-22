@@ -124,6 +124,52 @@ class TestDataTypeDetector:
         # Check timestamp detection
         assert detector.column_types['timestamp'] == 'datetime'
         assert 'datetime' in detector.conversion_suggestions['timestamp']['convert_to']
+        
+    def test_excel_date_detection(self):
+        """Test detection of Excel date numbers."""
+        # Excel dates are days since 1899-12-30
+        # 43831 = 2020-01-01 in Excel
+        # 44196 = 2021-01-01 in Excel
+        # 44562 = 2022-01-01 in Excel
+        excel_dates_df = pd.DataFrame({
+            'excel_date': [43831, 44196, 44562, 44927, 45292],  # 2020 through 2024 (Jan 1)
+            'excel_date_with_time': [43831.25, 43831.5, 43831.75, 44196.25, 44562.25],  # with time components
+            'description': ['New Year 2020', 'New Year 2021', 'New Year 2022', 'New Year 2023', 'New Year 2024'],
+            'normal_nums': [100, 200, 300, 400, 500]  # Regular numbers, not dates
+        })
+        
+        detector = DataTypeDetector(excel_dates_df)
+        detector.detect_all_types()
+        
+        # Check if Excel dates were detected
+        assert 'excel_date' in detector.semantic_types
+        assert detector.semantic_types['excel_date'] == 'excel_date'
+        assert detector.column_types['excel_date'] == 'datetime'
+        assert 'origin="1899-12-30"' in detector.conversion_suggestions['excel_date']['method']
+        
+        # Check that decimal Excel dates (with time components) are also detected
+        assert 'excel_date_with_time' in detector.semantic_types
+        assert detector.semantic_types['excel_date_with_time'] == 'excel_date'
+        
+        # Regular numbers should not be detected as Excel dates
+        assert 'normal_nums' not in detector.semantic_types or detector.semantic_types['normal_nums'] != 'excel_date'
+        
+        # Test conversion
+        converted_df = detector.convert_types()
+        
+        # Check if conversion worked properly
+        assert pd.api.types.is_datetime64_dtype(converted_df['excel_date'].dtype)
+        
+        # Verify specific dates
+        # First date should be 2020-01-01
+        assert converted_df['excel_date'].iloc[0].year == 2020
+        assert converted_df['excel_date'].iloc[0].month == 1
+        assert converted_df['excel_date'].iloc[0].day == 1
+        
+        # Last date should be 2024-01-01
+        assert converted_df['excel_date'].iloc[4].year == 2024
+        assert converted_df['excel_date'].iloc[4].month == 1
+        assert converted_df['excel_date'].iloc[4].day == 1
     
     def test_detect_categorical_numeric(self, sample_df):
         """Test categorical vs continuous numeric detection."""

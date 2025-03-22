@@ -108,6 +108,15 @@ For string and numeric columns, the detector can identify the following semantic
 - `longitude` - Geographic longitude values
 - `name` - Personal names
 - `address` - Address strings
+- `excel_date` - Numbers representing Excel dates (days since 1899-12-30)
+
+#### Australian-specific types:
+- `au_postcode` - Australian postal codes (4 digits, may have leading zeros)
+- `au_phone` - Australian phone numbers
+- `au_mobile` - Australian mobile numbers  
+- `au_abn` - Australian Business Numbers
+- `au_acn` - Australian Company Numbers
+- `au_tfn` - Australian Tax File Numbers
 
 ### Conversion Suggestions
 
@@ -116,8 +125,10 @@ The detector provides suggestions for optimizing column types, including:
 - Converting string columns to more efficient categorical types
 - Converting string date columns to datetime
 - Converting integer timestamp columns to datetime
+- Converting Excel date numbers to proper datetime objects
 - Downcasting integers and floats to smaller types
 - Converting numeric categorical columns to categorical type
+- Properly zero-padding Australian postcodes stored as integers
 
 ## Using the DataTypeDetector Class
 
@@ -143,6 +154,40 @@ report = detector.get_column_report()
 # Convert types based on suggestions
 converted_df = detector.convert_types()
 ```
+
+## Excel Date Detection
+
+The detector can identify numeric columns that likely represent Excel dates, which are stored as days since December 30, 1899:
+
+```python
+import pandas as pd
+from freamon.utils.datatype_detector import detect_column_types, optimize_dataframe_types
+
+# Sample data with Excel dates
+df = pd.DataFrame({
+    'date_col': [43831, 44196, 44562],  # Jan 1 for 2020, 2021, and 2022
+    'description': ['New Year 2020', 'New Year 2021', 'New Year 2022']
+})
+
+# Detect types - will identify the Excel dates
+types = detect_column_types(df)
+print(types['date_col'])
+# Output: {'storage_type': 'int64', 'logical_type': 'datetime', 
+#          'semantic_type': 'excel_date', 
+#          'suggested_conversion': {'convert_to': 'datetime', 
+#                                  'method': 'pd.to_datetime(unit="D", origin="1899-12-30")'}}
+
+# Automatically convert the Excel dates to proper datetime objects
+df_converted = optimize_dataframe_types(df)
+print(df_converted['date_col'])
+# Output: 
+# 0   2020-01-01
+# 1   2021-01-01
+# 2   2022-01-01
+# Name: date_col, dtype: datetime64[ns]
+```
+
+This is particularly useful when processing data exported from Excel to CSV, where date columns often lose their formatting and are saved as numbers.
 
 ## Integration with ML Pipelines
 

@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2] - 2025-04-29
+## [0.3.3] - 2025-04-29
+
+### Added
+- Advanced data type detection with Australian data patterns:
+  - Added DataTypeDetector class for semantic type detection
+  - Added support for Australian postcodes, phone numbers, ABNs, ACNs, and TFNs
+  - Added custom pattern handling with prioritization
+  - Added type conversion suggestions based on content analysis
+  - Added datetime detection with various formats
+  - Added Excel date detection for numeric columns (supports dates exported from Excel to CSV)
+  - Added comprehensive test suite with performance tests
+  - Added documentation for data type detection in docs/usage/data_type_detection.md
+  - Added example scripts for data type detection and custom patterns
+
+### Fixed
+- Fixed dependency issues with `pip install freamon[all]` option:
+  - Separated development tools from the `all` option to avoid confusion
+  - Added `full` option for dependencies including development tools
+  - Updated documentation to clarify installation options
+
+## [0.3.2] - 2025-04-25
 
 ### Added
 - Word embeddings capabilities in TextProcessor:
