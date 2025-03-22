@@ -12,7 +12,10 @@ A package to make data science projects on tabular data easier. Named after the 
 ## Features
 
 - **Data Quality Assessment:** Missing values, outliers, data types, duplicates
-- **Advanced Data Type Detection:** Semantic type identification including Australian-specific data patterns (postcodes, ABNs, ACNs, phone numbers)
+- **Advanced Data Type Detection:** 
+  - Semantic type identification including Australian-specific data patterns (postcodes, ABNs, ACNs, phone numbers)
+  - Mixed date format detection and intelligent multi-pass conversion
+  - Scientific notation detection and preservation
 - **Exploratory Data Analysis (EDA):** Statistical analysis and visualizations
 - **Feature Engineering:** 
   - **Standard Features:** Polynomial, interaction, datetime, binned features
@@ -48,10 +51,10 @@ A package to make data science projects on tabular data easier. Named after the 
 
 ```bash
 # Basic installation
-pip install freamon
+pip install freamon==0.3.4
 
 # With all optional dependencies (no development tools)
-pip install freamon[all]
+pip install freamon[all]==0.3.4
 
 # With all dependencies including development tools
 pip install freamon[full]
@@ -479,6 +482,8 @@ The package includes several example scripts to demonstrate its functionality:
 - **time_series_enhanced_example.py** - Advanced time series features
 - **text_analytics_example.py** - Text processing and feature extraction
 - **multivariate_analysis_example.py** - Multivariate feature exploration
+- **mixed_date_formats_example.py** - Handling date columns with multiple formats
+- **scientific_notation_example.py** - Detecting and visualizing scientific notation data
 
 Run any example by navigating to the examples directory and executing:
 

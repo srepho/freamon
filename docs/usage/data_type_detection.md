@@ -109,6 +109,8 @@ For string and numeric columns, the detector can identify the following semantic
 - `name` - Personal names
 - `address` - Address strings
 - `excel_date` - Numbers representing Excel dates (days since 1899-12-30)
+- `mixed_date_formats` - Date columns with multiple different date formats
+- `scientific_notation` - Numeric values in scientific notation (e.g., 1.23e-10)
 
 #### Australian-specific types:
 - `au_postcode` - Australian postal codes (4 digits, may have leading zeros)
@@ -126,9 +128,11 @@ The detector provides suggestions for optimizing column types, including:
 - Converting string date columns to datetime
 - Converting integer timestamp columns to datetime
 - Converting Excel date numbers to proper datetime objects
+- Converting columns with mixed date formats using multi-pass parsing
 - Downcasting integers and floats to smaller types
 - Converting numeric categorical columns to categorical type
 - Properly zero-padding Australian postcodes stored as integers
+- Maintaining scientific notation when appropriate for numeric columns
 
 ## Using the DataTypeDetector Class
 
@@ -188,6 +192,73 @@ print(df_converted['date_col'])
 ```
 
 This is particularly useful when processing data exported from Excel to CSV, where date columns often lose their formatting and are saved as numbers.
+
+## Mixed Date Format Detection
+
+The detector can identify and handle columns that contain dates in multiple different formats:
+
+```python
+import pandas as pd
+import numpy as np
+from freamon.utils.datatype_detector import detect_column_types, optimize_dataframe_types
+
+# Sample data with mixed date formats
+df = pd.DataFrame({
+    'mixed_dates': [
+        '2022-01-01',       # ISO format
+        '01/15/2022',       # US format
+        'January 20, 2022', # Full text format
+        '2022.01.25',       # Dot separated
+        '2022/01/30'        # Slash separated ISO
+    ]
+})
+
+# Detect types - will identify mixed date formats
+types = detect_column_types(df)
+print(types['mixed_dates'])
+# Output will indicate mixed_date_formats as the semantic type
+
+# Convert using multi-pass date parsing
+df_converted = optimize_dataframe_types(df)
+print(df_converted['mixed_dates'])
+# All dates will be properly converted to datetime
+```
+
+The multi-pass date conversion works by:
+1. First attempting automatic parsing with pandas
+2. Then identifying specific formats for dates that failed to parse
+3. Applying different format strings to different rows based on the detected patterns
+4. Maintaining already parsed dates to avoid overwriting them
+
+This is particularly useful for real-world datasets where dates may be entered inconsistently.
+
+## Scientific Notation Detection
+
+The detector can identify numeric columns that contain values in scientific notation:
+
+```python
+import pandas as pd
+from freamon.utils.datatype_detector import detect_column_types, optimize_dataframe_types
+
+# Sample data with scientific notation
+df = pd.DataFrame({
+    'small_values': [1.23e-10, 4.56e-12, 7.89e-15],
+    'large_values': [1.23e+10, 4.56e+12, 7.89e+15]
+})
+
+# Detect types
+types = detect_column_types(df)
+print(types['small_values'])
+# Output will indicate scientific_notation as the semantic type
+
+# Convert types (will maintain scientific notation where appropriate)
+df_converted = optimize_dataframe_types(df)
+```
+
+Scientific notation detection is valuable for:
+- Preserving very small or very large values that would otherwise lose precision
+- Understanding when to use logarithmic scales for visualization
+- Identifying features that may need special handling in modeling
 
 ## Integration with ML Pipelines
 

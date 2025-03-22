@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2025-05-10
+
+### Added
+- Enhanced data type detection capabilities:
+  - Added mixed date format detection and conversion to handle columns with inconsistent date formats
+  - Added scientific notation detection for numeric columns
+  - Added intelligent multi-pass date conversion for maximum data recovery
+  - Added new test cases for mixed date formats and scientific notation
+  - Added example scripts for both new features with visualizations
+
 ## [0.3.3] - 2025-04-29
 
 ### Added
