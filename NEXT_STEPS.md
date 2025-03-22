@@ -2,7 +2,7 @@
 
 ## Project Status
 
-Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.0
+Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.4
 
 The package has recently completed several major features:
 - Pipeline system with visualization and persistence
@@ -13,6 +13,10 @@ The package has recently completed several major features:
 - Model calibration and importance calculations
 - Text processing optimizations with multiple backends (pandas, polars, pyarrow)
 - Time series regression capabilities with visualization tools
+- Topic modeling and word embeddings for advanced NLP capabilities
+- Advanced data type detection with Australian-specific patterns
+- Mixed date format detection and multi-pass conversion
+- Scientific notation detection for numeric columns
 - Documentation and examples for all new features
 
 ## Priority Development Tasks
@@ -127,7 +131,61 @@ Based on the roadmap and current status, here are the next development prioritie
 
 - Version 0.3.1: Implement advanced NLP capabilities (topic modeling) ✅
 - Version 0.3.2: Implement word embeddings and address missing value/duplicate handling ✅
-- Version 0.3.3: Address remaining technical debt and improve documentation
+- Version 0.3.3: Add Australian-specific data patterns and Excel date detection ✅
+- Version 0.3.4: Implement mixed date format detection and scientific notation detection ✅
+
+### Proposed Version 0.3.5 Enhancements
+Based on the completed features in 0.3.4, we recommend the following areas for improvement:
+
+1. **Enhanced Multi-Pass Date Format Detection**
+   - Add a more sophisticated pattern detection system for date formats
+   - Add support for international date formats (European, Asian patterns)
+   - Implement format prioritization based on frequency and locale
+
+2. **Expanded Data Type Detection**
+   - Add detection for more complex financial data types (options symbols, futures contracts)
+   - Implement geographic coordinates detection (lat/long pairs)
+   - Add support for more international data patterns beyond Australian
+
+3. **Visualization Improvements for Data Types**
+   - Create interactive visualizations for detected data types
+   - Add dashboard for data type quality assessment
+   - Implement automatic visualization selection based on detected types
+
+4. **Performance Optimizations for Data Type Detection**
+   - Benchmark and optimize the datatype detector for very large datasets
+   - Implement smarter sampling strategies for better performance
+   - Add parallel processing for multi-column detection
+
+5. **Integration Enhancements**
+   - Create pipeline steps specifically for data type detection and conversion
+   - Better integrate with popular data validation libraries like Pandera or Great Expectations
+   - Add export capabilities to document the detected types
+
+6. **Automated Data Quality Assessment**
+   - Add anomaly detection based on semantic types
+   - Implement quality scoring for data based on type compliance
+   - Create automated data cleansing recommendations
+
+7. **Documentation and Example Expansion**
+   - Create a comprehensive user guide with visual examples
+   - Add Jupyter notebook tutorials for all features
+   - Create more real-world usage examples with public datasets
+
+8. **API Standardization**
+   - Review and standardize parameter names across the library
+   - Implement a more consistent return type pattern
+   - Add proper deprecation paths for evolving interfaces
+
+9. **Testing Infrastructure**
+   - Add property-based testing for data type detection
+   - Implement more comprehensive cross-validation testing
+   - Create benchmark test suites for performance monitoring
+
+10. **Cloud Integration**
+    - Add support for detecting types in cloud data sources
+    - Implement streaming type detection for large datasets
+    - Create integration with data catalogs for type registration
 
 ### Version 0.4.0
 
