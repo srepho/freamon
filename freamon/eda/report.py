@@ -113,6 +113,14 @@ def generate_html_report(
                 </li>
         """
     
+    if "feature_importance" in analysis_results:
+        html += """
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="feature-importance-tab" data-bs-toggle="pill" data-bs-target="#feature-importance" 
+                    type="button" role="tab" aria-controls="feature-importance" aria-selected="false">Feature Importance</button>
+                </li>
+        """
+    
     if "time_series" in analysis_results:
         html += """
                 <li class="nav-item" role="presentation">
@@ -982,6 +990,86 @@ def generate_html_report(
                 """
             
             html += """
+                                </div>
+                            </div>
+                        </div>
+            """
+        
+        html += """
+                    </div>
+                </div>
+        """
+    
+    # Feature Importance tab
+    if "feature_importance" in analysis_results:
+        html += """
+                <div class="tab-pane fade" id="feature-importance" role="tabpanel" aria-labelledby="feature-importance-tab">
+                    <div class="section">
+                        <h2>Feature Importance Analysis</h2>
+                        <p>
+                            This section shows the importance of features in predicting target variables,
+                            calculated using machine learning techniques.
+                        </p>
+        """
+        
+        importance_results = analysis_results["feature_importance"]
+        
+        for target, result in importance_results.items():
+            if "error" in result:
+                continue
+            
+            html += f"""
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title">Feature Importance for {target}</h5>
+                                <h6 class="card-subtitle text-muted">Method: {result["method"].replace("_", " ").title()}</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+            """
+            
+            # Add importance plot if available
+            if "plot" in result:
+                html += f"""
+                                    <div class="col-md-8">
+                                        <img src="{result["plot"]}" class="plot-img" alt="Feature Importance for {target}">
+                                    </div>
+                """
+            
+            # Add importance values table
+            html += """
+                                    <div class="col-md-4">
+                                        <h6>Importance Values</h6>
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Feature</th>
+                                                    <th>Importance</th>
+                                                    <th>Relative (%)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+            """
+            
+            # Add each feature with its importance
+            if "sorted_importances" in result:
+                # Calculate the maximum importance value for relative importance
+                max_importance = max(result["sorted_importances"].values())
+                
+                for feature, importance in result["sorted_importances"].items():
+                    relative = (importance / max_importance) * 100 if max_importance > 0 else 0
+                    html += f"""
+                                                <tr>
+                                                    <td>{feature}</td>
+                                                    <td>{importance:.4f}</td>
+                                                    <td>{relative:.1f}%</td>
+                                                </tr>
+                    """
+            
+            html += """
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -564,6 +564,100 @@ class EDAAnalyzer:
         
         print(f"Report saved to {output_path}")
     
+    def analyze_feature_importance(
+        self,
+        features: Optional[List[str]] = None,
+        target: Optional[str] = None,
+        method: str = 'random_forest',
+        n_estimators: int = 100,
+        max_depth: Optional[int] = None,
+        sample_size: Optional[int] = None,
+        use_sampling: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Calculate and analyze feature importance for a target variable.
+        
+        Parameters
+        ----------
+        features : Optional[List[str]], default=None
+            List of feature columns to use. If None, all numeric columns except target are used.
+        target : Optional[str], default=None
+            The name of the target column. If None, the class's target_column is used.
+        method : str, default='random_forest'
+            Method to use for importance calculation. Options: 'random_forest', 'permutation', 'shap'.
+        n_estimators : int, default=100
+            Number of estimators for tree-based methods.
+        max_depth : Optional[int], default=None
+            Maximum depth for tree-based methods.
+        sample_size : Optional[int], default=None
+            The number of rows to sample for analysis. If None and use_sampling is True,
+            a suitable sample size is chosen based on the dataframe size.
+        use_sampling : bool, default=False
+            Whether to use sampling for large datasets to speed up analysis.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary with feature importance analysis results.
+        """
+        from freamon.eda.bivariate import calculate_feature_importance
+        
+        # Set target column
+        if target is None:
+            target = self.target_column
+        
+        if target is None:
+            raise ValueError("Target column must be specified for feature importance analysis")
+        
+        # Set feature columns
+        if features is None:
+            # Use all numeric columns except target
+            features = [col for col in self.numeric_columns if col != target]
+        
+        # Determine if sampling should be used and the sample size
+        df_to_analyze = self.df
+        sampling_info = {}
+        
+        if use_sampling and self.n_rows > 10000:
+            if sample_size is None:
+                # Choose a reasonable sample size based on dataframe size
+                if self.n_rows > 1000000:
+                    sample_size = 100000
+                elif self.n_rows > 100000:
+                    sample_size = 50000
+                else:
+                    sample_size = 10000
+            
+            # Sample the dataframe
+            df_to_analyze = self.df.sample(min(sample_size, self.n_rows), random_state=42)
+            sampling_info = {
+                "original_size": self.n_rows,
+                "sample_size": len(df_to_analyze),
+                "sampling_ratio": len(df_to_analyze) / self.n_rows
+            }
+        
+        # Calculate feature importance
+        importance_result = calculate_feature_importance(
+            df=df_to_analyze,
+            features=features,
+            target=target,
+            method=method,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+        )
+        
+        # Add sampling information if sampling was used
+        if sampling_info:
+            importance_result["sampling_info"] = sampling_info
+        
+        # Store results
+        if "feature_importance" not in self.analysis_results:
+            self.analysis_results["feature_importance"] = {}
+        
+        self.analysis_results["feature_importance"][target] = importance_result
+        
+        return importance_result
+        
     def analyze_multivariate(
         self,
         columns: Optional[List[str]] = None,
@@ -724,6 +818,7 @@ class EDAAnalyzer:
         output_path: Optional[str] = None,
         title: str = "Exploratory Data Analysis Report",
         include_multivariate: bool = True,
+        include_feature_importance: bool = True,
         sample_size: Optional[int] = None,
         use_sampling: bool = False,
         cache_results: bool = True,
@@ -838,6 +933,24 @@ class EDAAnalyzer:
                     print(f"Multivariate analysis complete in {mv_end - mv_start:.2f} seconds")
             except Exception as e:
                 print(f"Warning: Multivariate analysis failed: {e}")
+        
+        # Run feature importance analysis if requested and target column is set
+        if include_feature_importance and self.target_column is not None:
+            if show_progress:
+                print("Running feature importance analysis...")
+                fi_start = time.time()
+                
+            try:
+                self.analyze_feature_importance(
+                    target=self.target_column,
+                    sample_size=sample_size,
+                    use_sampling=use_sampling
+                )
+                if show_progress:
+                    fi_end = time.time()
+                    print(f"Feature importance analysis complete in {fi_end - fi_start:.2f} seconds")
+            except Exception as e:
+                print(f"Warning: Feature importance analysis failed: {e}")
         
         # Generate report if requested
         if output_path is not None:

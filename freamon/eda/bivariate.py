@@ -425,3 +425,156 @@ def analyze_feature_target(
             result["plot"] = f"data:image/png;base64,{img_str}"
     
     return result
+
+
+def calculate_feature_importance(
+    df: pd.DataFrame,
+    features: List[str],
+    target: str,
+    method: str = 'random_forest',
+    n_estimators: int = 100,
+    max_depth: Optional[int] = None,
+    include_plot: bool = True,
+) -> Dict[str, Any]:
+    """
+    Calculate feature importance for a target variable using machine learning.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The dataframe to analyze.
+    features : List[str]
+        List of feature columns to use.
+    target : str
+        The name of the target column.
+    method : str, default='random_forest'
+        Method to use for importance calculation. Options: 'random_forest', 'permutation', 'shap'.
+    n_estimators : int, default=100
+        Number of estimators for tree-based methods.
+    max_depth : Optional[int], default=None
+        Maximum depth for tree-based methods.
+    include_plot : bool, default=True
+        Whether to include plot images in the results.
+    
+    Returns
+    -------
+    Dict[str, Any]
+        A dictionary with feature importance results.
+    """
+    from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+    from sklearn.inspection import permutation_importance
+    from sklearn.preprocessing import LabelEncoder
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+    import base64
+    
+    # Validate inputs
+    if target not in df.columns:
+        raise ValueError(f"Target column '{target}' not found in dataframe")
+    
+    # Check which features are actually in the dataframe and numeric
+    valid_features = []
+    for feature in features:
+        if feature not in df.columns:
+            continue
+        if not pd.api.types.is_numeric_dtype(df[feature]):
+            continue
+        valid_features.append(feature)
+    
+    if not valid_features:
+        return {"error": "No valid numeric features found"}
+    
+    # Remove rows with missing values
+    df_clean = df[valid_features + [target]].dropna()
+    
+    if len(df_clean) == 0:
+        return {"error": "No data available after removing missing values"}
+    
+    # Prepare X and y
+    X = df_clean[valid_features]
+    y = df_clean[target]
+    
+    # Check target type (classification or regression)
+    is_classification = False
+    if not pd.api.types.is_numeric_dtype(y):
+        is_classification = True
+        label_encoder = LabelEncoder()
+        y = label_encoder.fit_transform(y)
+    elif y.nunique() < 10:  # Small number of unique values might be a classification problem
+        if set(y.unique()).issubset({0, 1}) or len(y.unique()) / len(y) < 0.05:
+            is_classification = True
+    
+    # Initialize model based on problem type
+    if is_classification:
+        model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
+    else:
+        model = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
+    
+    # Train model
+    model.fit(X, y)
+    
+    # Calculate importance based on method
+    importance_values = {}
+    if method == 'random_forest':
+        importance = model.feature_importances_
+        for i, feature in enumerate(valid_features):
+            importance_values[feature] = float(importance[i])
+    elif method == 'permutation':
+        perm_importance = permutation_importance(model, X, y, n_repeats=10, random_state=42)
+        for i, feature in enumerate(valid_features):
+            importance_values[feature] = float(perm_importance.importances_mean[i])
+    elif method == 'shap':
+        try:
+            import shap
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X)
+            
+            # For classification with multiple classes, take the mean absolute SHAP value across classes
+            if isinstance(shap_values, list):
+                shap_values = np.abs(np.array(shap_values)).mean(axis=0)
+            
+            # Calculate mean absolute SHAP value for each feature
+            feature_importance = np.abs(shap_values).mean(axis=0)
+            for i, feature in enumerate(valid_features):
+                importance_values[feature] = float(feature_importance[i])
+        except ImportError:
+            # Fall back to random forest if SHAP is not available
+            importance = model.feature_importances_
+            for i, feature in enumerate(valid_features):
+                importance_values[feature] = float(importance[i])
+    
+    # Sort features by importance
+    sorted_importance = sorted(importance_values.items(), key=lambda x: x[1], reverse=True)
+    
+    # Create result dictionary
+    result = {
+        "method": method,
+        "target": target,
+        "is_classification": is_classification,
+        "importances": importance_values,
+        "sorted_importances": {k: v for k, v in sorted_importance}
+    }
+    
+    # Create plot if requested
+    if include_plot:
+        plt.figure(figsize=(10, 6))
+        features = [x[0] for x in sorted_importance]
+        importances = [x[1] for x in sorted_importance]
+        
+        plt.barh(features, importances)
+        plt.xlabel('Importance')
+        plt.ylabel('Feature')
+        plt.title(f'Feature Importance for {target} ({method.replace("_", " ").title()})')
+        plt.tight_layout()
+        
+        # Save plot to BytesIO
+        buf = BytesIO()
+        plt.savefig(buf, format="png", dpi=100)
+        plt.close()
+        
+        # Convert to base64
+        buf.seek(0)
+        img_str = base64.b64encode(buf.read()).decode("utf-8")
+        result["plot"] = f"data:image/png;base64,{img_str}"
+    
+    return result
