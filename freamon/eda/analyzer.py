@@ -142,6 +142,15 @@ class EDAAnalyzer:
                 self.datetime_columns.append(col)
             elif logical_type in ['integer', 'float', 'continuous_integer', 'continuous_float']:
                 self.numeric_columns.append(col)
+            elif logical_type == 'boolean' or (
+                # Special case for binary columns - treat as numeric if they are 0/1
+                logical_type in ['categorical_integer'] and 
+                self.df[col].dropna().nunique() == 2 and
+                set(self.df[col].dropna().unique()).issubset({0, 1, True, False})
+            ):
+                # Binary columns should be in both numeric and categorical
+                self.numeric_columns.append(col)
+                self.categorical_columns.append(col)
             elif logical_type in ['categorical', 'categorical_integer', 'categorical_float', 'boolean', 'string']:
                 self.categorical_columns.append(col)
             else:

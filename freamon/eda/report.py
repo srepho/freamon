@@ -503,7 +503,7 @@ def generate_html_report(
                                                                 </tr>
                                                                 <tr>
                                                                     <th>Unique Values</th>
-                                                                    <td>{result["unique"]}</td>
+                                                                    <td>{result.get("unique", len(result.get("value_counts", {}))-1 if "Missing" in result.get("value_counts", {}) else len(result.get("value_counts", {})))}</td>
                                                                 </tr>
                                                                 <tr>
                                                                     <th>Is Boolean</th>

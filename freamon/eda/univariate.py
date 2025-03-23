@@ -2,6 +2,7 @@
 Univariate analysis functions for EDA.
 """
 from typing import Any, Dict, List, Optional, Union, Tuple, Literal
+import logging
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from io import BytesIO
 import base64
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def analyze_numeric(
@@ -258,10 +262,27 @@ def analyze_datetime(
     datetime_cols = df.select_dtypes(include=['datetime']).columns
     
     if column not in datetime_cols:
+        # First try standard conversion
         try:
             series = pd.to_datetime(series)
-        except (ValueError, TypeError):
-            raise ValueError(f"Column '{column}' cannot be converted to datetime")
+        except (ValueError, TypeError, OverflowError) as e:
+            # Special handling for month-year formats
+            from freamon.utils.date_converters import is_month_year_format, convert_month_year_format
+            
+            # Check if this might be a month-year format like 'Jun-24'
+            if is_month_year_format(series):
+                try:
+                    logger.info(f"Detected month-year format for column '{column}', attempting conversion")
+                    converted_series = convert_month_year_format(series)
+                    if not pd.isna(converted_series).all():
+                        series = converted_series
+                    else:
+                        raise ValueError(f"Failed to convert month-year format for column '{column}'")
+                except Exception as e2:
+                    logger.warning(f"Month-year conversion failed for column '{column}': {str(e2)}")
+                    raise ValueError(f"Column '{column}' cannot be converted to datetime: {str(e)}")
+            else:
+                raise ValueError(f"Column '{column}' cannot be converted to datetime: {str(e)}")
     
     # Basic statistics
     stats = {
@@ -303,9 +324,14 @@ def analyze_datetime(
     
     # Distribution by year and month
     if "year" in date_components:
-        year_counts = series.dt.year.value_counts().sort_index()
-        year_dict = {str(year): int(count) for year, count in year_counts.items()}
-        stats["year_counts"] = year_dict
+        try:
+            # Handle potential float values (like 2024.0) that pandas might use
+            year_counts = series.dt.year.value_counts().sort_index()
+            # Store as integers to ensure consistent representation
+            year_dict = {str(int(year)): int(count) for year, count in year_counts.items()}
+            stats["year_counts"] = year_dict
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Could not process year counts due to: {str(e)}")
     
     if "month" in date_components:
         month_counts = series.dt.month.value_counts().sort_index()
@@ -343,16 +369,43 @@ def analyze_datetime(
         # Plot year distribution if available
         if "year_counts" in stats:
             ax = axes[plot_idx]
-            years = list(map(int, stats["year_counts"].keys()))
-            counts = list(stats["year_counts"].values())
             
-            ax.bar(years, counts)
-            ax.set_title("Distribution by Year")
-            ax.set_xlabel("Year")
-            ax.set_ylabel("Count")
-            
-            # Set x-ticks to show all years
-            ax.set_xticks(years)
+            try:
+                # First, safely convert keys to numeric values
+                year_keys = list(stats["year_counts"].keys())
+                years = []
+                counts = []
+                
+                # Process years and counts together to ensure they match up
+                for key in year_keys:
+                    try:
+                        # First try to convert to float and then to int
+                        year = int(float(key))
+                        years.append(year)
+                        counts.append(stats["year_counts"][key])
+                    except (ValueError, TypeError):
+                        logger.warning(f"Could not convert year value '{key}' to int")
+                
+                # Only proceed if we have valid years
+                if not years:
+                    ax.text(0.5, 0.5, "No valid year data to display", 
+                            horizontalalignment='center', verticalalignment='center',
+                            transform=ax.transAxes)
+                else:
+                    # Create bar chart with the valid data
+                    ax.bar(years, counts)
+                    ax.set_title("Distribution by Year")
+                    ax.set_xlabel("Year")
+                    ax.set_ylabel("Count")
+                    
+                    # Set x-ticks to show all years
+                    ax.set_xticks(years)
+            except Exception as e:
+                # Catch any other errors and display a message
+                logger.error(f"Error creating year distribution chart: {str(e)}")
+                ax.text(0.5, 0.5, "Could not create year distribution chart", 
+                        horizontalalignment='center', verticalalignment='center',
+                        transform=ax.transAxes)
             
             plot_idx += 1
         
