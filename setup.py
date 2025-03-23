@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="freamon",
-    version="0.3.4",
+    version="0.3.5",
     packages=find_packages(),
     install_requires=[
         "numpy",
@@ -31,6 +31,7 @@ setup(
             "catboost",
             "spacy",
             "polars",
+            "pyarrow>=12.0.0",
             "dask[dataframe]",
             "shapiq",
             "shap",
@@ -43,6 +44,7 @@ setup(
             "catboost",
             "spacy",
             "polars",
+            "pyarrow>=12.0.0",
             "dask[dataframe]",
             "shapiq",
             "shap",
@@ -85,6 +87,9 @@ setup(
         "visualization": [
             "plotly",
             "graphviz",
+        ],
+        "performance": [
+            "pyarrow>=12.0.0",
         ],
     },
     python_requires=">=3.10",

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2025-05-25
+
+### Added
+- Performance optimizations for DataTypeDetector:
+  - Added PyArrow integration for faster type detection and conversion
+  - Implemented batch processing for more efficient column type conversion
+  - Added optimization for large dataframes with intelligent sampling
+  - Added optional dependency on PyArrow for enhanced performance
+  - Added performance test script for benchmarking optimizations
+
+### Fixed
+- Fixed Excel date conversion with missing values:
+  - Resolved "overflow encountered with multiply" error
+  - Improved handling of mixed data types in date columns
+  - Enhanced robustness for columns with NaN values
+  - Added detailed examples and documentation for Excel date handling
+
 ## [0.3.4] - 2025-05-10
 
 ### Added

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
-version = "0.3.4"
+version = "0.3.5"
 authors = [
     {name = "The Freamon Team", email = "contact@freamon.ai"},
 ]
@@ -66,6 +66,10 @@ extended = [
     "textblob>=0.17.0",
 ]
 
+performance = [
+    "pyarrow>=12.0.0",
+]
+
 word_embeddings = [
     "gensim>=4.0.0",
     "scikit-learn>=1.0.0",
@@ -87,11 +91,11 @@ topic_modeling = [
 ]
 
 all = [
-    "freamon[extended,word_embeddings,topic_modeling]",
+    "freamon[extended,word_embeddings,topic_modeling,performance]",
 ]
 
 full = [
-    "freamon[extended,dev,word_embeddings,topic_modeling]",
+    "freamon[extended,dev,word_embeddings,topic_modeling,performance]",
 ]
 
 [tool.pytest.ini_options]
