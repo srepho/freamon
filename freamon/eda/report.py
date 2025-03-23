@@ -331,7 +331,7 @@ def generate_html_report(
                             showing distributions, statistics, and other relevant information.
                         </p>
                         
-                        <div class="accordion" id="univariateAccordion">
+                        <div class="accordion accordion-flush" id="univariateAccordion">
         """
         
         univariate_results = analysis_results["univariate"]
