@@ -817,7 +817,7 @@ class EDAAnalyzer:
         self,
         output_path: Optional[str] = None,
         title: str = "Exploratory Data Analysis Report",
-        include_multivariate: bool = True,
+        include_multivariate: bool = False,  # Changed default to False to improve performance
         include_feature_importance: bool = True,
         sample_size: Optional[int] = None,
         use_sampling: bool = False,
@@ -833,8 +833,9 @@ class EDAAnalyzer:
             The path to save the HTML report. If None, no report is generated.
         title : str, default="Exploratory Data Analysis Report"
             The title of the report.
-        include_multivariate : bool, default=True
-            Whether to include multivariate analysis in the full analysis.
+        include_multivariate : bool, default=False
+            Whether to include multivariate analysis in the full analysis. Set to False by default
+            to improve performance since multivariate analysis can be computationally expensive.
         sample_size : Optional[int], default=None
             The number of rows to sample for analysis. If None and use_sampling is True,
             a suitable sample size is chosen based on the dataframe size.

@@ -62,6 +62,23 @@ def generate_html_report(
             .table-responsive {{ margin-bottom: 20px; }}
             .plot-img {{ max-width: 100%; height: auto; }}
             .nav-pills .nav-link.active {{ background-color: #6c757d; }}
+            
+            /* Accordion styles */
+            .accordion-button:not(.collapsed) {{
+                background-color: #e7f1ff;
+                color: #0c63e4;
+                box-shadow: inset 0 -1px 0 rgba(0,0,0,.125);
+            }}
+            .accordion-button.collapsed {{
+                background-color: #f8f9fa;
+            }}
+            .accordion-item {{
+                border: 1px solid rgba(0,0,0,.125);
+                margin-bottom: 5px;
+            }}
+            .accordion-body {{
+                padding: 1rem;
+            }}
         </style>
     </head>
     <body>
@@ -1431,7 +1448,56 @@ def generate_html_report(
             </div>
         </div>
         
+        <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            // Initialize all Bootstrap components and fix accordion issues
+            document.addEventListener('DOMContentLoaded', function() {
+                // Initialize tooltips
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+                
+                // Initialize all accordion items properly
+                var accordionItems = document.querySelectorAll('.accordion-button');
+                if (accordionItems.length > 0) {
+                    accordionItems.forEach(function(accordionButton) {
+                        // Add manual click handler for accordion buttons
+                        accordionButton.addEventListener('click', function() {
+                            // Get the target collapse element
+                            var targetId = this.getAttribute('data-bs-target');
+                            var targetCollapse = document.querySelector(targetId);
+                            
+                            if (targetCollapse) {
+                                // Toggle the show class
+                                if (targetCollapse.classList.contains('show')) {
+                                    targetCollapse.classList.remove('show');
+                                    this.classList.add('collapsed');
+                                    this.setAttribute('aria-expanded', 'false');
+                                } else {
+                                    targetCollapse.classList.add('show');
+                                    this.classList.remove('collapsed');
+                                    this.setAttribute('aria-expanded', 'true');
+                                }
+                            }
+                        });
+                    });
+                    
+                    console.log('Accordion buttons initialized: ' + accordionItems.length);
+                }
+                
+                // Properly initialize all collapse elements
+                document.querySelectorAll('.collapse').forEach(function(collapseEl) {
+                    // Create a new Collapse instance for each element
+                    var bsCollapse = new bootstrap.Collapse(collapseEl, {
+                        toggle: false  // Don't toggle on initialization
+                    });
+                });
+                
+                console.log('Freamon EDA report initialized successfully');
+            });
+        </script>
     </body>
     </html>
     """

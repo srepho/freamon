@@ -2,7 +2,7 @@
 
 ## Project Status
 
-Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.13
+Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.14
 
 The package has recently completed several major features:
 - Pipeline system with visualization and persistence
@@ -145,6 +145,7 @@ Based on the roadmap and current status, here are the next development prioritie
 - Version 0.3.4: Implement mixed date format detection and scientific notation detection ✅
 - Version 0.3.12: Performance optimizations for large datasets and expensive operations ✅
 - Version 0.3.13: Feature importance analysis for target variables using machine learning ✅
+- Version 0.3.14: Fix matplotlib currency symbol display and improve HTML report accordions ✅
 
 ### Proposed Version 0.3.5 Enhancements
 Based on the completed features in 0.3.4, we recommend the following areas for improvement:

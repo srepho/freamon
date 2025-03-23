@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
-version = "0.3.13"
+version = "0.3.14"
 authors = [
     {name = "The Freamon Team", email = "contact@freamon.ai"},
 ]

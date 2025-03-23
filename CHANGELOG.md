@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 0.3.14 - Display and HTML Report Improvements
+- Fixed matplotlib LaTeX parsing errors when displaying text with dollar signs
+- Added utility functions to safely handle currency symbols in visualizations
+- Fixed HTML report accordion components not expanding/collapsing correctly in Bootstrap 5
+- Added proper JavaScript initialization for HTML accordions with event handlers
+- Improved CSS styling for accordion components in reports
+- Changed default for multivariate analysis from True to False to improve performance
+- Updated documentation to reflect new defaults and performance considerations
+
 ## Version 0.3.13 - Feature Importance Analysis
 - Added feature importance calculation for target variables using machine learning
 - Implemented support for both classification and regression targets
