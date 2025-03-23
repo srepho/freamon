@@ -51,10 +51,10 @@ A package to make data science projects on tabular data easier. Named after the 
 
 ```bash
 # Basic installation
-pip install freamon==0.3.6
+pip install freamon==0.3.7
 
 # With all optional dependencies (no development tools)
-pip install freamon[all]==0.3.6
+pip install freamon[all]==0.3.7
 
 # With all dependencies including development tools
 pip install freamon[full]
