@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2025-06-15
+
+### Fixed
+- Fixed month-year format detection issue in DataTypeDetector:
+  - Enhanced detection to properly identify abbreviated month formats like 'Aug-24', 'Oct-24'
+  - Added additional checks for month-year formats that are auto-parsed by pandas but not properly identified
+  - Improved conversion suggestions to correctly handle month-year formats
+  - Added more detailed logging for better diagnostics
+  - Fixed issue where semantic type wasn't being set even when format was detected
+
 ## [0.3.7] - 2025-06-10
 
 ### Changed

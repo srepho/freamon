@@ -355,6 +355,25 @@ class DataTypeDetector:
         
         # Detect semantic types if requested
         if self.detect_semantic_types:
+            # First check for month-year formats that might have been auto-parsed as datetime
+            # This needs to happen before general semantic type detection
+            for col in self.df.columns:
+                if self.column_types.get(col) == 'datetime' and col not in self.semantic_types:
+                    # Get sample data
+                    sample = self._get_column_sample(col)
+                    # If it's a string column that got parsed as datetime, check if it's month-year format
+                    original_dtype = self.df[col].dtype
+                    if pd.api.types.is_object_dtype(original_dtype) or pd.api.types.is_string_dtype(original_dtype):
+                        if is_month_year_format(sample, threshold=self.threshold):
+                            self.semantic_types[col] = 'month_year_format'
+                            self.conversion_suggestions[col] = {
+                                'convert_to': 'datetime',
+                                'method': 'convert_month_year_format',
+                                'note': 'Contains month-year format'
+                            }
+                            logger.debug(f"Month-year format detected in pre-semantic type check for column '{col}'")
+            
+            # Continue with regular semantic type detection
             self._detect_semantic_types()
         
         # Generate conversion suggestions
@@ -643,10 +662,22 @@ class DataTypeDetector:
                     parsed = pd.to_datetime(values, errors='coerce')
                     if parsed.notna().mean() >= self.threshold:
                         self.column_types[col] = 'datetime'
-                        self.conversion_suggestions[col] = {
-                            'convert_to': 'datetime',
-                            'method': 'pd.to_datetime'
-                        }
+                        
+                        # Check if it's actually a month-year format that pandas parsed automatically
+                        if is_month_year_format(values, threshold=self.threshold):
+                            self.semantic_types[col] = 'month_year_format'
+                            self.conversion_suggestions[col] = {
+                                'convert_to': 'datetime',
+                                'method': 'convert_month_year_format',
+                                'note': 'Contains month-year format'
+                            }
+                            # Debug logging for month-year format detection
+                            logger.debug(f"Month-year format detected for column '{col}'")
+                        else:
+                            self.conversion_suggestions[col] = {
+                                'convert_to': 'datetime',
+                                'method': 'pd.to_datetime'
+                            }
                 except (ValueError, TypeError):
                     pass
                 
