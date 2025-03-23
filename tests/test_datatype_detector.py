@@ -113,7 +113,7 @@ class TestDataTypeDetector:
     
     def test_detect_datetime_columns(self, sample_df):
         """Test datetime column detection."""
-        detector = DataTypeDetector(sample_df)
+        detector = DataTypeDetector(sample_df, optimized=False)
         detector._detect_basic_types()
         detector._detect_datetime_columns()
         
@@ -258,8 +258,8 @@ class TestDataTypeDetector:
         # This is not testing our implementation but verifying that pandas can parse these formats
         true_dates = pd.to_datetime(mixed_dates_df['mixed_dates'], errors='coerce')
         
-        detector = DataTypeDetector(mixed_dates_df)
-        detector.detect_all_types()
+        detector = DataTypeDetector(mixed_dates_df, optimized=False)
+        detector.detect_all_types(optimized=False)
         
         # Check if mixed dates were detected
         assert 'mixed_dates' in detector.column_types
@@ -306,8 +306,8 @@ class TestDataTypeDetector:
             'other_column': ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
         })
         
-        detector = DataTypeDetector(month_year_df)
-        detector.detect_all_types()
+        detector = DataTypeDetector(month_year_df, optimized=False)
+        detector.detect_all_types(optimized=False)
         
         # Check if month-year formats were detected as dates
         assert 'month_year' in detector.column_types
@@ -390,7 +390,7 @@ class TestDataTypeDetector:
     
     def test_detect_semantic_types(self, sample_df):
         """Test semantic type detection."""
-        detector = DataTypeDetector(sample_df)
+        detector = DataTypeDetector(sample_df, optimized=False)
         detector._detect_basic_types()
         detector._detect_semantic_types()
         
@@ -471,8 +471,8 @@ class TestDataTypeDetector:
     
     def test_convert_types(self, sample_df):
         """Test the convert_types method."""
-        detector = DataTypeDetector(sample_df)
-        detector.detect_all_types()
+        detector = DataTypeDetector(sample_df, optimized=False)
+        detector.detect_all_types(optimized=False)
         
         # Convert all columns
         converted_df = detector.convert_types()

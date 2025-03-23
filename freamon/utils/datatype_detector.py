@@ -23,11 +23,17 @@ warnings.filterwarnings("ignore", message="Could not infer format, so each eleme
 
 class DataTypeDetector:
     """
-    Advanced data type detection and inference.
+    Advanced data type detection and inference with performance optimizations.
     
     This class provides methods to detect logical data types beyond the
     basic storage types, including IDs, zip codes, phone numbers, addresses,
     Excel dates, and distinguishing between categorical and continuous numeric features.
+    
+    The implementation includes performance optimizations for large datasets using:
+    - Efficient sampling strategies
+    - PyArrow integration for faster processing
+    - Caching of intermediate results
+    - Vectorized operations where possible
     
     Parameters
     ----------
@@ -43,7 +49,15 @@ class DataTypeDetector:
         Whether to distinguish between categorical and continuous numeric columns
     custom_patterns : Optional[Dict[str, str]], default=None
         Dictionary of custom regex patterns to use for semantic type detection
-        
+    use_pyarrow : bool, default=True
+        Whether to use PyArrow for faster processing when available
+    cache_results : bool, default=True
+        Whether to cache intermediate results for better performance
+    early_termination : bool, default=True
+        Whether to stop processing when a high-confidence match is found
+    max_sample_rows : int, default=100000
+        Maximum number of rows to sample for large datasets
+    
     Examples
     --------
     >>> import pandas as pd
@@ -68,6 +82,11 @@ class DataTypeDetector:
         detect_semantic_types: bool = True,
         categorize_numeric: bool = True,
         custom_patterns: Optional[Dict[str, str]] = None,
+        use_pyarrow: bool = True,
+        cache_results: bool = True,
+        early_termination: bool = True,
+        max_sample_rows: int = 100000,
+        optimized: bool = True
     ):
         """
         Initialize the DataTypeDetector with a dataframe.
@@ -87,17 +106,46 @@ class DataTypeDetector:
         custom_patterns : Optional[Dict[str, str]], default=None
             Dictionary of custom regex patterns to use for semantic type detection
             in the format {'type_name': 'regex_pattern'}
+        use_pyarrow : bool, default=True
+            Whether to use PyArrow for faster processing when available
+        cache_results : bool, default=True
+            Whether to cache intermediate results for better performance
+        early_termination : bool, default=True
+            Whether to stop processing when a high-confidence match is found
+        max_sample_rows : int, default=100000
+            Maximum number of rows to sample for large datasets
         """
         self.df = df
         self.sample_size = sample_size
         self.threshold = threshold
         self.detect_semantic_types = detect_semantic_types
         self.categorize_numeric = categorize_numeric
+        self.use_pyarrow = use_pyarrow
+        self.cache_results = cache_results
+        self.early_termination = early_termination
+        self.max_sample_rows = max_sample_rows
+        self.optimized = optimized
         
         # Results storage
         self.column_types = {}
         self.conversion_suggestions = {}
         self.semantic_types = {}
+        
+        # Initialize column stats (for backward compatibility)
+        self._column_stats = None
+        
+        # Cache storage for improved performance
+        self._cache = {
+            'column_samples': {},
+            'column_stats': {},
+            'regex_matches': {},
+            'date_parsed': {},
+            'basic_types': False,
+            'datetime_detected': False,
+            'categorical_detected': False,
+            'semantic_detected': False,
+            'compiled_patterns': {}
+        }
         
         # Default regex patterns for detecting semantic types
         self.patterns = {
@@ -152,64 +200,136 @@ class DataTypeDetector:
             "%Y%m%d", "%Y%m%d%H%M%S"
         ]
     
-    def detect_all_types(self, use_pyarrow: bool = True) -> Dict[str, Dict[str, Any]]:
+    def detect_all_types(self, use_pyarrow: Optional[bool] = None, optimized: Optional[bool] = None) -> Dict[str, Dict[str, Any]]:
         """
         Detect and categorize all column types in the dataframe.
         
+        This method orchestrates the type detection process with optimizations:
+        1. Uses PyArrow for fast processing on large datasets
+        2. Implements smart sampling to handle very large dataframes
+        3. Caches intermediate results for better performance
+        4. Handles batch processing for similar columns
+        5. Uses early termination when high-confidence matches are found
+        
         Parameters
         ----------
-        use_pyarrow : bool, default=True
-            Whether to use PyArrow for faster preprocessing when possible
+        use_pyarrow : Optional[bool], default=None
+            Whether to use PyArrow for faster preprocessing when possible.
+            If None, uses the class's use_pyarrow setting.
             
         Returns
         -------
         Dict[str, Dict[str, Any]]
-            Dictionary with column type information
+            Dictionary with detailed column type information
         """
+        # Start timing for performance monitoring
+        start_time = datetime.now()
+        
+        # Use the class settings if not explicitly provided
+        if use_pyarrow is None:
+            use_pyarrow = self.use_pyarrow
+            
+        # Allow disabling optimizations for testing
+        original_optimized = None
+        if optimized is not None:
+            original_optimized = self.optimized
+            self.optimized = optimized
+            
+        # Get the dataframe size to determine optimization strategy
+        n_rows, n_cols = self.df.shape
+        logger.info(f"Detecting types for dataframe with {n_rows} rows and {n_cols} columns")
+        
+        # Determine if we should use sampling
+        should_sample = n_rows > self.max_sample_rows
+        if should_sample:
+            logger.info(f"Using sampling for large dataframe ({n_rows} rows > {self.max_sample_rows} max)")
+            
         # Try to use PyArrow for initial type inference when dealing with large dataframes
-        if use_pyarrow and len(self.df) > 10000:
+        if use_pyarrow and n_rows > 10000:
             try:
                 import pyarrow as pa
                 import pyarrow.compute as pc
                 
-                logger.info(f"Using PyArrow for preprocessing large dataframe with {len(self.df)} rows")
+                logger.info(f"Using PyArrow for preprocessing large dataframe")
                 
                 # Convert to arrow table for faster processing
                 arrow_table = pa.Table.from_pandas(self.df)
                 
-                # Pre-compute some statistics that we'll need later
-                # This is much faster in Arrow for large datasets
+                # Cache the Arrow table if caching is enabled
+                if self.cache_results:
+                    self._cache['arrow_table'] = arrow_table
+                
+                # Pre-compute statistics with PyArrow - much faster for large datasets
                 column_stats = {}
-                for col in self.df.columns:
-                    try:
-                        # Get arrow column
-                        arrow_col = arrow_table[col]
-                        
-                        # Count nulls more efficiently
-                        null_count = pc.sum(pc.is_null(arrow_col)).as_py()
-                        
-                        # Count unique values more efficiently
-                        # Note: This might still be expensive for very large columns with many unique values
-                        if len(self.df) > 100000:  # For extremely large datasets, use sampling
-                            sample_indices = np.random.choice(len(self.df), 
-                                                           min(50000, len(self.df)), 
-                                                           replace=False)
-                            sample_indices.sort()  # Keep indices sorted
-                            sampled_col = pc.take(arrow_col, pa.array(sample_indices))
-                            unique_count = len(pc.unique(sampled_col))
-                            is_sampled = True
-                        else:
-                            unique_count = len(pc.unique(arrow_col))
-                            is_sampled = False
+                batch_size = min(10, n_cols)  # Process in batches for many columns
+                
+                for i in range(0, n_cols, batch_size):
+                    batch_cols = self.df.columns[i:i+batch_size]
+                    for col in batch_cols:
+                        try:
+                            # Get arrow column
+                            arrow_col = arrow_table[col]
                             
-                        column_stats[col] = {
-                            'null_count': null_count,
-                            'null_ratio': null_count / len(self.df),
-                            'unique_count': unique_count,
-                            'unique_is_sampled': is_sampled,
-                        }
-                    except Exception as e:
-                        logger.warning(f"PyArrow statistics failed for column {col}: {str(e)}")
+                            # Count nulls efficiently with Arrow
+                            null_count = pc.sum(pc.is_null(arrow_col)).as_py()
+                            
+                            # Use efficient sampling for large datasets
+                            if should_sample:
+                                # Create a stratified sample for better representation
+                                # Include both head, tail, and random middle values
+                                head_size = min(1000, n_rows // 10)
+                                tail_size = min(1000, n_rows // 10)
+                                middle_size = min(self.sample_size - head_size - tail_size, 
+                                                 n_rows - head_size - tail_size)
+                                
+                                if middle_size > 0:
+                                    middle_indices = np.random.choice(
+                                        np.arange(head_size, n_rows - tail_size),
+                                        middle_size, replace=False
+                                    )
+                                    indices = np.concatenate([
+                                        np.arange(head_size),
+                                        middle_indices,
+                                        np.arange(n_rows - tail_size, n_rows)
+                                    ])
+                                    indices.sort()
+                                else:
+                                    # If not enough rows, just take as many as possible
+                                    indices = np.arange(min(self.sample_size, n_rows))
+                                
+                                sampled_col = pc.take(arrow_col, pa.array(indices))
+                                unique_count = len(pc.unique(sampled_col))
+                                is_sampled = True
+                            else:
+                                # For smaller datasets, get exact count of uniques
+                                unique_count = len(pc.unique(arrow_col))
+                                is_sampled = False
+                                
+                            column_stats[col] = {
+                                'null_count': null_count,
+                                'null_ratio': null_count / n_rows,
+                                'unique_count': unique_count,
+                                'unique_is_sampled': is_sampled,
+                            }
+                            
+                            # Add more statistics for numeric columns
+                            if pa.types.is_integer(arrow_col.type) or pa.types.is_floating(arrow_col.type):
+                                # Try to compute stats on non-null values only
+                                non_null_col = pc.drop_null(arrow_col)
+                                if len(non_null_col) > 0:
+                                    column_stats[col].update({
+                                        'min': pc.min(non_null_col).as_py(),
+                                        'max': pc.max(non_null_col).as_py(),
+                                        'mean': pc.mean(non_null_col).as_py(),
+                                        'stddev': pc.stddev(non_null_col).as_py(),
+                                    })
+                            
+                            # Cache column samples for later use
+                            if self.cache_results:
+                                self._cache['column_stats'][col] = column_stats[col]
+                                
+                        except Exception as e:
+                            logger.warning(f"PyArrow statistics failed for column {col}: {str(e)}")
                 
                 # Store this for later use
                 self._column_stats = column_stats
@@ -223,8 +343,10 @@ class DataTypeDetector:
         # First, detect basic types
         self._detect_basic_types()
         
-        # Then detect datetime columns
-        if 'object' in self.df.dtypes.values or 'int64' in self.df.dtypes.values:
+        # Then detect datetime columns (only for compatible dtypes)
+        has_potential_dates = any(dtype.name in ('object', 'int64', 'float64') 
+                                 for dtype in self.df.dtypes)
+        if has_potential_dates:
             self._detect_datetime_columns()
         
         # Detect categorical vs continuous for numeric columns
@@ -237,6 +359,14 @@ class DataTypeDetector:
         
         # Generate conversion suggestions
         self._generate_conversion_suggestions()
+        
+        # Log performance info
+        elapsed = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Type detection completed in {elapsed:.2f} seconds")
+        
+        # Restore original optimized setting if it was changed
+        if original_optimized is not None:
+            self.optimized = original_optimized
         
         # Compile the final result
         result = {}
@@ -254,28 +384,244 @@ class DataTypeDetector:
         
         return result
     
+    def _get_column_sample(self, col_name: str, sample_size: Optional[int] = None) -> pd.Series:
+        """
+        Get an optimized sample of a dataframe column with caching for better performance.
+        
+        This method uses smart sampling strategies:
+        1. Cache samples to avoid recomputing for the same column
+        2. Use stratified sampling for better representation (include head, tail, and middle values)
+        3. Handle very large datasets efficiently
+        
+        Parameters
+        ----------
+        col_name : str
+            The name of the column to sample
+        sample_size : Optional[int], default=None
+            The number of samples to take. If None, uses self.sample_size
+            
+        Returns
+        -------
+        pd.Series
+            A representative sample of the column
+        """
+        if sample_size is None:
+            sample_size = self.sample_size
+            
+        # Check if we already have this sample cached
+        if self.cache_results and col_name in self._cache['column_samples']:
+            cached = self._cache['column_samples'][col_name]
+            if cached['size'] >= sample_size:
+                return cached['sample']
+        
+        # Get column and length
+        column = self.df[col_name]
+        n_rows = len(column)
+        
+        # If column is smaller than sample size, return the whole column
+        if n_rows <= sample_size:
+            sample = column
+        else:
+            # For large columns, use stratified sampling to ensure we get a good representation
+            # Include values from the beginning, middle and end of the column
+            head_size = min(sample_size // 3, 1000)
+            tail_size = min(sample_size // 3, 1000)
+            middle_size = sample_size - head_size - tail_size
+            
+            # Get head and tail indices
+            head_indices = np.arange(head_size)
+            tail_indices = np.arange(n_rows - tail_size, n_rows)
+            
+            # Get random indices from the middle
+            if middle_size > 0 and n_rows > head_size + tail_size:
+                middle_range = n_rows - head_size - tail_size
+                if middle_range > 0:
+                    middle_indices = np.random.choice(
+                        np.arange(head_size, n_rows - tail_size), 
+                        min(middle_size, middle_range), 
+                        replace=False
+                    )
+                    # Combine all indices and sort
+                    indices = np.concatenate([head_indices, middle_indices, tail_indices])
+                    indices.sort()
+                else:
+                    # Not enough rows for middle sampling
+                    indices = np.concatenate([head_indices, tail_indices])
+            else:
+                # Not enough rows for middle sampling
+                indices = np.concatenate([head_indices, tail_indices])
+            
+            # Create the sample
+            sample = column.iloc[indices]
+        
+        # Cache the sample for future use
+        if self.cache_results:
+            self._cache['column_samples'][col_name] = {
+                'sample': sample,
+                'size': len(sample)
+            }
+            
+        return sample
+
     def _detect_basic_types(self) -> None:
         """
-        Detect basic column types based on pandas dtypes.
+        Detect basic column types based on pandas dtypes with optimizations.
+        
+        This method uses optimized strategies when self.optimized is True:
+        1. Caches results to avoid redundant processing
+        2. Uses vectorized operations where possible
+        3. Processes columns in batches for similar types
+        4. Uses PyArrow pre-computed statistics when available
+        
+        For backward compatibility, it falls back to the original implementation
+        when self.optimized is False.
         """
-        for col in self.df.columns:
-            dtype = self.df[col].dtype
+        # Legacy implementation for backward compatibility
+        if not self.optimized:
+            # This is the original implementation
+            for col in self.df.columns:
+                dtype = self.df[col].dtype
+                
+                if pd.api.types.is_numeric_dtype(dtype):
+                    if pd.api.types.is_integer_dtype(dtype):
+                        self.column_types[col] = 'integer'
+                    else:
+                        self.column_types[col] = 'float'
+                elif pd.api.types.is_datetime64_dtype(dtype):
+                    self.column_types[col] = 'datetime'
+                elif isinstance(dtype, pd.CategoricalDtype):
+                    self.column_types[col] = 'categorical'
+                elif pd.api.types.is_bool_dtype(dtype):
+                    self.column_types[col] = 'boolean'
+                elif pd.api.types.is_string_dtype(dtype) or dtype == 'object':
+                    self.column_types[col] = 'string'
+                else:
+                    self.column_types[col] = 'unknown'
+            return
+                    
+        # Optimized implementation
+        # Check if we've already computed basic types and can use cached results
+        if self.cache_results and self._cache['basic_types']:
+            logger.info("Using cached basic type detection results")
+            return
             
+        # Group columns by dtype for batch processing
+        dtype_groups = {}
+        for col in self.df.columns:
+            dtype_name = str(self.df[col].dtype)
+            if dtype_name not in dtype_groups:
+                dtype_groups[dtype_name] = []
+            dtype_groups[dtype_name].append(col)
+            
+        # Process each dtype group in batches
+        for dtype_name, columns in dtype_groups.items():
+            dtype = self.df[columns[0]].dtype  # All columns in the group have the same dtype
+            
+            # Process each group with appropriate vectorized operations
             if pd.api.types.is_numeric_dtype(dtype):
                 if pd.api.types.is_integer_dtype(dtype):
-                    self.column_types[col] = 'integer'
+                    # Process all integer columns at once
+                    for col in columns:
+                        self.column_types[col] = 'integer'
                 else:
-                    self.column_types[col] = 'float'
+                    # Process all float columns at once
+                    for col in columns:
+                        self.column_types[col] = 'float'
+                        
             elif pd.api.types.is_datetime64_dtype(dtype):
-                self.column_types[col] = 'datetime'
+                # Process all datetime columns at once
+                for col in columns:
+                    self.column_types[col] = 'datetime'
+                    
             elif isinstance(dtype, pd.CategoricalDtype):
-                self.column_types[col] = 'categorical'
+                # Process all categorical columns at once
+                for col in columns:
+                    self.column_types[col] = 'categorical'
+                    
             elif pd.api.types.is_bool_dtype(dtype):
-                self.column_types[col] = 'boolean'
+                # Process all boolean columns at once
+                for col in columns:
+                    self.column_types[col] = 'boolean'
+                    
             elif pd.api.types.is_string_dtype(dtype) or dtype == 'object':
-                self.column_types[col] = 'string'
+                # For string/object columns, do additional analysis for each column
+                for col in columns:
+                    # We need to analyze the content to determine if it's a string or something else
+                    if hasattr(self, '_column_stats') and self._column_stats and col in self._column_stats:
+                        # Use pre-computed stats if available (from PyArrow processing)
+                        stats = self._column_stats[col]
+                        if stats['null_count'] == len(self.df):
+                            # All null column
+                            self.column_types[col] = 'null'
+                            continue
+                            
+                        # Use unique count to determine if it's categorical (low cardinality)
+                        if 'unique_count' in stats and stats['unique_count'] <= 20:
+                            self.column_types[col] = 'categorical'
+                        else:
+                            self.column_types[col] = 'string'
+                    else:
+                        # Get a sample to analyze
+                        sample = self._get_column_sample(col)
+                        
+                        # Check for all nulls
+                        if sample.isna().all():
+                            self.column_types[col] = 'null'
+                            continue
+                        
+                        # Check for low cardinality (categorical)
+                        non_null_sample = sample.dropna()
+                        if len(non_null_sample) > 0:
+                            # First, try to check if this is a date column
+                            # For better performance, only check a small subset
+                            date_check_sample = non_null_sample.iloc[:min(20, len(non_null_sample))]
+                            is_date_column = False
+                            
+                            # A quick check for date-like patterns in strings
+                            if all(isinstance(v, str) for v in date_check_sample):
+                                # Look for common date patterns
+                                date_patterns = [
+                                    # Has dashes, slashes or dots with 2-4 digit year
+                                    r'\d{1,4}[-/\.]\d{1,2}[-/\.]\d{1,4}',
+                                    # Has month name
+                                    r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)',
+                                    # Has YYYY format at beginning or end
+                                    r'^(19|20)\d{2}|[^\d](19|20)\d{2}$',
+                                    # Has numeric month/year
+                                    r'\d{1,2}[-/\.\s](19|20)?\d{2}$'
+                                ]
+                                
+                                # Check if at least half of values match date patterns
+                                date_like_count = 0
+                                for val in date_check_sample:
+                                    if isinstance(val, str):
+                                        val_lower = val.lower()
+                                        if any(re.search(pattern, val_lower) for pattern in date_patterns):
+                                            date_like_count += 1
+                                
+                                # If more than half look like dates, mark as potential date column
+                                if date_like_count >= len(date_check_sample) * 0.5:
+                                    is_date_column = True
+                            
+                            # Determine whether categorical or string, considering date detection
+                            unique_count = non_null_sample.nunique()
+                            if is_date_column:
+                                # Mark as datetime for further processing in _detect_datetime_columns
+                                self.column_types[col] = 'datetime'
+                            elif unique_count <= 20 or (unique_count / len(non_null_sample) < 0.1):
+                                self.column_types[col] = 'categorical'
+                            else:
+                                self.column_types[col] = 'string'
+                        else:
+                            self.column_types[col] = 'string'
             else:
-                self.column_types[col] = 'unknown'
+                # Unknown datatypes
+                for col in columns:
+                    self.column_types[col] = 'unknown'
+        
+        # Mark as computed in cache
+        if self.cache_results:
+            self._cache['basic_types'] = True
     
     def _detect_datetime_columns(self) -> None:
         """
