@@ -14,6 +14,9 @@ import base64
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Configure matplotlib to avoid treating $ as LaTeX math delimiters
+plt.rcParams['text.usetex'] = False
+
 
 def analyze_numeric(
     df: pd.DataFrame,

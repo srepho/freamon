@@ -11,6 +11,9 @@ from io import BytesIO
 import base64
 from scipy import stats
 
+# Configure matplotlib to avoid treating $ as LaTeX math delimiters
+plt.rcParams['text.usetex'] = False
+
 
 def analyze_correlation(
     df: pd.DataFrame,

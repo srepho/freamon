@@ -6,7 +6,11 @@ from typing import Any, Dict, List, Optional, Union, Callable
 import pandas as pd
 import numpy as np
 import base64
+import matplotlib.pyplot as plt
 from datetime import datetime
+
+# Configure matplotlib to avoid treating $ as LaTeX math delimiters
+plt.rcParams['text.usetex'] = False
 
 
 def generate_html_report(

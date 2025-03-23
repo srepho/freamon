@@ -20,6 +20,9 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from scipy import stats
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
+# Configure matplotlib to avoid treating $ as LaTeX math delimiters
+plt.rcParams['text.usetex'] = False
+
 
 def analyze_timeseries(
     df: pd.DataFrame,

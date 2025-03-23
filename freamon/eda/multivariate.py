@@ -15,6 +15,9 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
+# Configure matplotlib to avoid treating $ as LaTeX math delimiters
+plt.rcParams['text.usetex'] = False
+
 
 def _encode_plot(fig: plt.Figure) -> str:
     """
