@@ -254,15 +254,23 @@ def perform_tsne(
     if scale:
         X = StandardScaler().fit_transform(X)
     
-    # Apply t-SNE
+    # Apply t-SNE (can be computationally expensive)
+    import time
+    start_time = time.time()
+    
+    print(f"Running t-SNE on {X.shape[0]} samples with {X.shape[1]} features...")
     tsne = TSNE(
         n_components=n_components,
         perplexity=min(perplexity, len(df) - 1),  # Perplexity must be less than sample size
         learning_rate=learning_rate,
         n_iter=n_iter,
+        verbose=1,  # Show progress during computation
         random_state=random_state
     )
     X_tsne = tsne.fit_transform(X)
+    
+    end_time = time.time()
+    print(f"t-SNE completed in {end_time - start_time:.2f} seconds")
     
     # Create a DataFrame with the results
     tsne_df = pd.DataFrame(

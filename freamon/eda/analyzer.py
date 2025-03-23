@@ -72,6 +72,8 @@ class EDAAnalyzer:
         target_column: Optional[str] = None,
         date_column: Optional[str] = None,
         custom_patterns: Optional[Dict[str, str]] = None,
+        use_sampling: bool = False,
+        sample_size: Optional[int] = None,
     ):
         """
         Initialize the EDAAnalyzer.
@@ -87,9 +89,16 @@ class EDAAnalyzer:
         custom_patterns : Optional[Dict[str, str]], default=None
             Dictionary of custom regex patterns for semantic type detection
             in the format {'type_name': 'regex_pattern'}.
+        use_sampling : bool, default=False
+            Whether to use sampling for large datasets to speed up analysis.
+        sample_size : Optional[int], default=None
+            The number of rows to sample for analysis. If None and use_sampling is True,
+            a suitable sample size is chosen based on the dataframe size.
         """
         self.dataframe_type = check_dataframe_type(df)
         self.custom_patterns = custom_patterns
+        self.use_sampling = use_sampling
+        self.sample_size = sample_size
         
         # Convert to pandas for analysis
         if self.dataframe_type != 'pandas':
@@ -114,8 +123,9 @@ class EDAAnalyzer:
         # Set basic stats
         self.n_rows, self.n_cols = self.df.shape
         
-        # Initialize result storage
+        # Initialize result storage and caches
         self.analysis_results = {}
+        self._multivariate_cache = {}
     
     def _set_column_types(self) -> None:
         """Identify numeric, categorical, and datetime columns with advanced type detection."""
@@ -244,6 +254,8 @@ class EDAAnalyzer:
         columns: Optional[List[str]] = None,
         max_categories: int = 20,
         bins: Optional[int] = None,
+        sample_size: Optional[int] = None,
+        use_sampling: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """
         Perform univariate analysis on the specified columns.
@@ -256,6 +268,11 @@ class EDAAnalyzer:
             The maximum number of categories to display for categorical columns.
         bins : Optional[int], default=None
             The number of bins for histograms. If None, a suitable number is chosen.
+        sample_size : Optional[int], default=None
+            The number of rows to sample for analysis. If None and use_sampling is True,
+            a suitable sample size is chosen based on the dataframe size.
+        use_sampling : bool, default=False
+            Whether to use sampling for large datasets to speed up analysis.
             
         Returns
         -------
@@ -268,6 +285,28 @@ class EDAAnalyzer:
         
         result = {}
         
+        # Determine if sampling should be used and the sample size
+        df_to_analyze = self.df
+        sampling_info = {}
+        
+        if use_sampling and self.n_rows > 10000:
+            if sample_size is None:
+                # Choose a reasonable sample size based on dataframe size
+                if self.n_rows > 1000000:
+                    sample_size = 100000
+                elif self.n_rows > 100000:
+                    sample_size = 50000
+                else:
+                    sample_size = 10000
+            
+            # Sample the dataframe
+            df_to_analyze = self.df.sample(min(sample_size, self.n_rows), random_state=42)
+            sampling_info = {
+                "original_size": self.n_rows,
+                "sample_size": len(df_to_analyze),
+                "sampling_ratio": len(df_to_analyze) / self.n_rows
+            }
+        
         for col in columns:
             if col not in self.df.columns:
                 print(f"Warning: Column '{col}' not found in dataframe")
@@ -275,21 +314,25 @@ class EDAAnalyzer:
             
             # Analyze based on column type
             if col in self.numeric_columns:
-                col_result = analyze_numeric(self.df, col, bins=bins)
+                col_result = analyze_numeric(df_to_analyze, col, bins=bins)
             elif col in self.categorical_columns:
-                col_result = analyze_categorical(self.df, col, max_categories=max_categories)
+                col_result = analyze_categorical(df_to_analyze, col, max_categories=max_categories)
             elif col in self.datetime_columns:
-                col_result = analyze_datetime(self.df, col)
+                col_result = analyze_datetime(df_to_analyze, col)
             else:
                 # Try to determine type and analyze
-                dtype = self.df[col].dtype
+                dtype = df_to_analyze[col].dtype
                 if np.issubdtype(dtype, np.number):
-                    col_result = analyze_numeric(self.df, col, bins=bins)
+                    col_result = analyze_numeric(df_to_analyze, col, bins=bins)
                 elif np.issubdtype(dtype, np.datetime64):
-                    col_result = analyze_datetime(self.df, col)
+                    col_result = analyze_datetime(df_to_analyze, col)
                 else:
-                    col_result = analyze_categorical(self.df, col, max_categories=max_categories)
+                    col_result = analyze_categorical(df_to_analyze, col, max_categories=max_categories)
             
+            # Add sampling information if sampling was used
+            if sampling_info:
+                col_result["sampling_info"] = sampling_info
+                
             result[col] = col_result
         
         # Store results
@@ -302,6 +345,8 @@ class EDAAnalyzer:
         columns: Optional[List[str]] = None,
         target: Optional[str] = None,
         correlation_method: str = 'pearson',
+        sample_size: Optional[int] = None,
+        use_sampling: bool = False,
     ) -> Dict[str, Any]:
         """
         Perform bivariate analysis on the specified columns.
@@ -315,6 +360,11 @@ class EDAAnalyzer:
             target_column is used.
         correlation_method : str, default='pearson'
             The correlation method to use. Options: 'pearson', 'spearman', 'kendall'.
+        sample_size : Optional[int], default=None
+            The number of rows to sample for analysis. If None and use_sampling is True,
+            a suitable sample size is chosen based on the dataframe size.
+        use_sampling : bool, default=False
+            Whether to use sampling for large datasets to speed up analysis.
             
         Returns
         -------
@@ -335,12 +385,38 @@ class EDAAnalyzer:
             else:
                 columns = self.df.columns.tolist()
         
+        # Determine if sampling should be used and the sample size
+        df_to_analyze = self.df
+        sampling_info = {}
+        
+        if use_sampling and self.n_rows > 10000:
+            if sample_size is None:
+                # Choose a reasonable sample size based on dataframe size
+                if self.n_rows > 1000000:
+                    sample_size = 100000
+                elif self.n_rows > 100000:
+                    sample_size = 50000
+                else:
+                    sample_size = 10000
+            
+            # Sample the dataframe
+            df_to_analyze = self.df.sample(min(sample_size, self.n_rows), random_state=42)
+            sampling_info = {
+                "original_size": self.n_rows,
+                "sample_size": len(df_to_analyze),
+                "sampling_ratio": len(df_to_analyze) / self.n_rows
+            }
+        
         # Calculate correlation matrix for numeric columns
         numeric_cols = [col for col in columns if col in self.numeric_columns]
         if len(numeric_cols) > 1:
             result["correlation"] = analyze_correlation(
-                self.df, columns=numeric_cols, method=correlation_method
+                df_to_analyze, columns=numeric_cols, method=correlation_method
             )
+            
+            # Add sampling information if sampling was used
+            if sampling_info:
+                result["correlation"]["sampling_info"] = sampling_info
         
         # Analyze relationship with target if provided
         if target is not None:
@@ -352,7 +428,12 @@ class EDAAnalyzer:
                 if col == target:
                     continue
                 
-                col_result = analyze_feature_target(self.df, feature=col, target=target)
+                col_result = analyze_feature_target(df_to_analyze, feature=col, target=target)
+                
+                # Add sampling information if sampling was used
+                if sampling_info:
+                    col_result["sampling_info"] = sampling_info
+                    
                 target_analysis[col] = col_result
             
             result["feature_target"] = target_analysis
@@ -497,6 +578,9 @@ class EDAAnalyzer:
         correlation_layout: str = 'spring',
         max_heatmap_features: int = 20,
         plot_kwargs: Optional[Dict[str, Any]] = None,
+        sample_size: Optional[int] = None,
+        use_sampling: bool = False,
+        cache_results: bool = True,
     ) -> Dict[str, Dict[str, Any]]:
         """
         Perform multivariate analysis on the specified columns.
@@ -527,6 +611,13 @@ class EDAAnalyzer:
             Maximum number of features to include in the interaction heatmap.
         plot_kwargs : Optional[Dict[str, Any]], default=None
             Additional arguments to pass to the plot functions.
+        sample_size : Optional[int], default=None
+            The number of rows to sample for analysis. If None and use_sampling is True,
+            a suitable sample size is chosen based on the dataframe size.
+        use_sampling : bool, default=False
+            Whether to use sampling for large datasets to speed up analysis.
+        cache_results : bool, default=True
+            Whether to cache results for expensive operations like PCA and t-SNE.
             
         Returns
         -------
@@ -542,9 +633,60 @@ class EDAAnalyzer:
         if len(numeric_cols) < 2:
             raise ValueError("At least 2 numeric columns are required for multivariate analysis")
         
+        # Determine if sampling should be used and the sample size
+        df_to_analyze = self.df
+        sampling_info = {}
+        
+        if use_sampling and self.n_rows > 10000:
+            if sample_size is None:
+                # Choose a reasonable sample size based on dataframe size
+                if self.n_rows > 1000000:
+                    sample_size = 100000
+                elif self.n_rows > 100000:
+                    sample_size = 50000
+                else:
+                    sample_size = 10000
+            
+            # Sample the dataframe
+            df_to_analyze = self.df.sample(min(sample_size, self.n_rows), random_state=42)
+            sampling_info = {
+                "original_size": self.n_rows,
+                "sample_size": len(df_to_analyze),
+                "sampling_ratio": len(df_to_analyze) / self.n_rows
+            }
+            
+        # Check if we have cached results we can use
+        cache_key = None
+        if cache_results and hasattr(self, '_multivariate_cache'):
+            # Create a cache key based on parameters
+            cache_key = (
+                tuple(sorted(numeric_cols)), 
+                method,
+                n_components,
+                scale,
+                tsne_perplexity if 'tsne' in method or method == 'all' else None,
+                tsne_n_iter if 'tsne' in method or method == 'all' else None,
+                correlation_threshold if 'correlation_network' in method or method == 'all' else None,
+                correlation_method if 'correlation_network' in method or method == 'all' else None,
+                len(df_to_analyze)  # Include dataframe size in cache key
+            )
+            
+            if cache_key in self._multivariate_cache:
+                # We have cached results we can use
+                cached_result = self._multivariate_cache[cache_key].copy()
+                
+                # Add sampling information if sampling was used
+                if sampling_info:
+                    for method_name, method_results in cached_result.items():
+                        method_results["sampling_info"] = sampling_info.copy()
+                
+                # Store results
+                self.analysis_results["multivariate"] = cached_result
+                return cached_result
+        
         # Perform multivariate analysis
         result = analyze_multivariate(
-            df=self.df,
+            df=df_to_analyze,
             columns=numeric_cols,
             method=method,
             n_components=n_components,
@@ -559,6 +701,19 @@ class EDAAnalyzer:
             plot_kwargs=plot_kwargs,
         )
         
+        # Add sampling information if sampling was used
+        if sampling_info:
+            for method_name, method_results in result.items():
+                method_results["sampling_info"] = sampling_info.copy()
+        
+        # Cache the results if caching is enabled
+        if cache_results:
+            if not hasattr(self, '_multivariate_cache'):
+                self._multivariate_cache = {}
+            
+            if cache_key is not None:
+                self._multivariate_cache[cache_key] = result.copy()
+        
         # Store results
         self.analysis_results["multivariate"] = result
         
@@ -569,6 +724,10 @@ class EDAAnalyzer:
         output_path: Optional[str] = None,
         title: str = "Exploratory Data Analysis Report",
         include_multivariate: bool = True,
+        sample_size: Optional[int] = None,
+        use_sampling: bool = False,
+        cache_results: bool = True,
+        show_progress: bool = False,
     ) -> Dict[str, Any]:
         """
         Run a complete analysis and optionally generate a report.
@@ -581,36 +740,121 @@ class EDAAnalyzer:
             The title of the report.
         include_multivariate : bool, default=True
             Whether to include multivariate analysis in the full analysis.
+        sample_size : Optional[int], default=None
+            The number of rows to sample for analysis. If None and use_sampling is True,
+            a suitable sample size is chosen based on the dataframe size.
+        use_sampling : bool, default=False
+            Whether to use sampling for large datasets to speed up analysis.
+        cache_results : bool, default=True
+            Whether to cache results for expensive operations like PCA and t-SNE.
+        show_progress : bool, default=False
+            Whether to show progress messages during analysis.
             
         Returns
         -------
         Dict[str, Any]
             A dictionary with all analysis results.
         """
-        # Run all analyses
-        self.analyze_basic_stats()
-        self.analyze_univariate()
+        import time
         
+        start_time = time.time()
+        
+        if show_progress:
+            print("Starting full analysis...")
+            print(f"DataFrame size: {self.n_rows} rows, {self.n_cols} columns")
+            if use_sampling and self.n_rows > 10000:
+                actual_sample = sample_size if sample_size is not None else (
+                    100000 if self.n_rows > 1000000 else 
+                    50000 if self.n_rows > 100000 else 
+                    10000
+                )
+                print(f"Using sampling with sample size: {actual_sample} rows")
+        
+        # Run basic stats
+        if show_progress:
+            print("Running basic statistics analysis...")
+            bs_start = time.time()
+            
+        self.analyze_basic_stats()
+        
+        if show_progress:
+            bs_end = time.time()
+            print(f"Basic statistics complete in {bs_end - bs_start:.2f} seconds")
+            print("Running univariate analysis...")
+            univ_start = time.time()
+        
+        # Run univariate analysis
+        self.analyze_univariate(
+            sample_size=sample_size,
+            use_sampling=use_sampling
+        )
+        
+        if show_progress:
+            univ_end = time.time()
+            print(f"Univariate analysis complete in {univ_end - univ_start:.2f} seconds")
+            print("Running bivariate analysis...")
+            biv_start = time.time()
+        
+        # Run bivariate analysis
         try:
-            self.analyze_bivariate()
+            self.analyze_bivariate(
+                sample_size=sample_size,
+                use_sampling=use_sampling
+            )
+            if show_progress:
+                biv_end = time.time()
+                print(f"Bivariate analysis complete in {biv_end - biv_start:.2f} seconds")
         except Exception as e:
             print(f"Warning: Bivariate analysis failed: {e}")
         
+        # Run time series analysis if datetime columns are present
         if self.date_column is not None or len(self.datetime_columns) > 0:
+            if show_progress:
+                print("Running time series analysis...")
+                ts_start = time.time()
+                
             try:
                 self.analyze_time_series()
+                if show_progress:
+                    ts_end = time.time()
+                    print(f"Time series analysis complete in {ts_end - ts_start:.2f} seconds")
             except Exception as e:
                 print(f"Warning: Time series analysis failed: {e}")
         
         # Run multivariate analysis if requested
         if include_multivariate and len(self.numeric_columns) >= 2:
+            if show_progress:
+                print("Running multivariate analysis...")
+                mv_start = time.time()
+                
             try:
-                self.analyze_multivariate()
+                self.analyze_multivariate(
+                    sample_size=sample_size,
+                    use_sampling=use_sampling,
+                    cache_results=cache_results
+                )
+                if show_progress:
+                    mv_end = time.time()
+                    print(f"Multivariate analysis complete in {mv_end - mv_start:.2f} seconds")
             except Exception as e:
                 print(f"Warning: Multivariate analysis failed: {e}")
         
         # Generate report if requested
         if output_path is not None:
+            if show_progress:
+                print("Generating HTML report...")
+                report_start = time.time()
+                
             self.generate_report(output_path=output_path, title=title)
+            
+            if show_progress:
+                report_end = time.time()
+                print(f"Report generation complete in {report_end - report_start:.2f} seconds")
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        
+        if show_progress:
+            print(f"Full analysis completed in {total_time:.2f} seconds")
         
         return self.analysis_results

@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 0.3.12 - Performance Optimizations
+- Added data sampling option for large datasets in EDA analysis
+- Implemented caching for expensive operations like PCA and t-SNE
+- Added progress monitoring with execution time tracking
+- Enhanced HTML reports to display sampling information
+- Added support for parallel processing and improved multivariate analysis performance
+
 ## Version 0.3.11 - Matplotlib Warning Fixes
 - Fixed matplotlib warnings about using categorical units for numeric data
 - Resolved FutureWarnings related to pandas groupby observed parameter

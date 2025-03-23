@@ -67,6 +67,14 @@ def generate_html_report(
             
             <div class="alert alert-info" role="alert">
                 This report provides an overview of the dataset and the results of exploratory data analysis.
+                {
+                    "<strong>Note:</strong> Sampling was used for some analyses to improve performance." 
+                    if any("sampling_info" in section.get(key, {}) 
+                           for section in analysis_results.values() 
+                           if isinstance(section, dict) 
+                           for key in section if isinstance(section.get(key), dict))
+                    else ""
+                }
             </div>
             
             <ul class="nav nav-pills mb-4" id="eda-tabs" role="tablist">
@@ -386,6 +394,13 @@ def generate_html_report(
                                                                     <th>Missing</th>
                                                                     <td>{result["missing"]} ({result["missing_pct"]:.2f}%)</td>
                                                                 </tr>
+                                                                {
+                                                                    f'''<tr>
+                                                                        <th>Sampling</th>
+                                                                        <td>Analysis based on {result["sampling_info"]["sample_size"]} rows ({result["sampling_info"]["sampling_ratio"]:.1%} of data)</td>
+                                                                    </tr>'''
+                                                                    if "sampling_info" in result else ""
+                                                                }
                                                                 <tr>
                                                                     <th>Mean</th>
                                                                     <td>{result["mean"]:.4f}</td>
