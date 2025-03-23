@@ -1836,54 +1836,52 @@ class DataTypeDetector:
         # Apply styling
         try:
             # Function to apply colors based on data type
-            def style_cells(val, column):
-                # Color coding by type
-                if column == 'Logical Type':
-                    if 'datetime' in str(val).lower():
-                        return 'background-color: #BBDEFB'  # Light blue for dates
-                    elif 'categorical' in str(val).lower():
-                        return 'background-color: #C8E6C9'  # Light green for categorical
-                    elif 'continuous' in str(val).lower() or 'float' in str(val).lower():
-                        return 'background-color: #FFF9C4'  # Light yellow for numeric
-                    elif 'string' in str(val).lower():
-                        return 'background-color: #F8BBD0'  # Light pink for strings
-                    else:
-                        return ''
-                        
-                # Color coding for semantic types
-                elif column == 'Semantic Type':
-                    if 'date' in str(val).lower() or 'month_year' in str(val).lower():
-                        return 'background-color: #BBDEFB'  # Light blue for dates
-                    elif 'id' in str(val).lower() or 'uuid' in str(val).lower():
-                        return 'background-color: #D1C4E9'  # Light purple for IDs
-                    elif val:  # Any other semantic type that's non-empty
-                        return 'background-color: #E1BEE7'  # Light purple for other semantic types
-                    else:
-                        return ''
-                
-                # Color coding for null percentage
-                elif column == 'Null %':
-                    if val == '0.0%':
-                        return 'color: green'
-                    null_value = float(val.replace('%', ''))
-                    if null_value > 50:
-                        return 'color: red; font-weight: bold'
-                    elif null_value > 20:
-                        return 'color: orange'
-                    else:
-                        return ''
-                        
-                # Color coding for suggested conversions
-                elif column == 'Suggested Conversion':
-                    if val:
-                        return 'background-color: #FFE0B2'  # Light orange for suggestions
-                    else:
-                        return ''
-                        
-                return ''
+            # Define styling functions for each column separately
+            def style_logical_type(val):
+                if 'datetime' in str(val).lower():
+                    return 'background-color: #BBDEFB'  # Light blue for dates
+                elif 'categorical' in str(val).lower():
+                    return 'background-color: #C8E6C9'  # Light green for categorical
+                elif 'continuous' in str(val).lower() or 'float' in str(val).lower():
+                    return 'background-color: #FFF9C4'  # Light yellow for numeric
+                elif 'string' in str(val).lower():
+                    return 'background-color: #F8BBD0'  # Light pink for strings
+                else:
+                    return ''
             
-            # Apply style to DataFrame - using newer 'map' method instead of deprecated 'applymap'
-            styled_df = report_df.style.map(style_cells, subset=pd.IndexSlice[:, ['Logical Type', 'Semantic Type', 'Null %', 'Suggested Conversion']])
+            def style_semantic_type(val):
+                if 'date' in str(val).lower() or 'month_year' in str(val).lower():
+                    return 'background-color: #BBDEFB'  # Light blue for dates
+                elif 'id' in str(val).lower() or 'uuid' in str(val).lower():
+                    return 'background-color: #D1C4E9'  # Light purple for IDs
+                elif val:  # Any other semantic type that's non-empty
+                    return 'background-color: #E1BEE7'  # Light purple for other semantic types
+                else:
+                    return ''
+            
+            def style_null_percentage(val):
+                if val == '0.0%':
+                    return 'color: green'
+                null_value = float(val.replace('%', ''))
+                if null_value > 50:
+                    return 'color: red; font-weight: bold'
+                elif null_value > 20:
+                    return 'color: orange'
+                else:
+                    return ''
+            
+            def style_suggested_conversion(val):
+                if val:
+                    return 'background-color: #FFE0B2'  # Light orange for suggestions
+                else:
+                    return ''
+            
+            # Apply styles to specific columns
+            styled_df = report_df.style
+            styled_df = styled_df.map(style_logical_type, subset=pd.IndexSlice[:, 'Logical Type'])
+            styled_df = styled_df.map(style_semantic_type, subset=pd.IndexSlice[:, 'Semantic Type'])
+            styled_df = styled_df.map(style_null_percentage, subset=pd.IndexSlice[:, 'Null %'])
+            styled_df = styled_df.map(style_suggested_conversion, subset=pd.IndexSlice[:, 'Suggested Conversion'])
             
             # Format the table
             styled_df = styled_df.set_caption('Data Type Detection Report')
