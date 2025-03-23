@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 0.3.15 - Text Processor Train/Test Split Support
+- Added fit/transform capability to TextProcessor for TF-IDF and bag-of-words features
+- Implemented vectorizer storage in TextProcessor instances
+- Added transform_tfidf_features and transform_bow_features methods for test data
+- Improved text preprocessing workflow for train/test splits
+- Updated documentation and examples for text feature extraction
+
 ## Version 0.3.14 - Display and HTML Report Improvements
 - Fixed matplotlib LaTeX parsing errors when displaying text with dollar signs
 - Added utility functions to safely handle currency symbols in visualizations

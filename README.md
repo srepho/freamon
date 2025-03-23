@@ -51,10 +51,10 @@ A package to make data science projects on tabular data easier. Named after the 
 
 ```bash
 # Basic installation
-pip install freamon==0.3.8
+pip install freamon==0.3.15
 
 # With all optional dependencies (no development tools)
-pip install freamon[all]==0.3.8
+pip install freamon[all]==0.3.15
 
 # With all dependencies including development tools
 pip install freamon[full]
@@ -520,7 +520,7 @@ print(f"Validation metrics: {metrics}")
 - **utils:** Utility functions for working with dataframes and encoders
   - **dataframe_utils:** Tools for different dataframe backends and date detection
   - **encoders:** Categorical variable encoding tools with cross-validation support
-  - **text_utils:** Text processing utilities
+  - **text_utils:** Text processing utilities with fit/transform capability for TF-IDF and bag-of-words features
 - **model_selection:** Methods for splitting data and cross-validation
   - **cross_validation:** Standard and time series cross-validation tools
   - **cv_trainer:** Cross-validated model training with ensemble methods
