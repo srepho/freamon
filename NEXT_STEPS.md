@@ -2,7 +2,7 @@
 
 ## Project Status
 
-Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.4
+Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.13
 
 The package has recently completed several major features:
 - Pipeline system with visualization and persistence
@@ -55,7 +55,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Add autocorrelation and partial autocorrelation visualizations
 
 - **Target-Oriented EDA** (When target variable is provided)
-  - Feature Importance Section: Include visualizations showing importance of each feature related to target using correlation, ANOVA, chi-square or mutual information
+  - ✅ Feature Importance Section: Include visualizations showing importance of each feature related to target using machine learning models
   - Target Variable Profile: Add prominent section with detailed target distribution, balance metrics, and key statistics
   - Predictive Power Score Matrix: Implement PPS calculation to measure non-linear relationships between features and target
   - Conditional Statistics: Show how feature distributions differ across target classes/ranges
@@ -143,6 +143,8 @@ Based on the roadmap and current status, here are the next development prioritie
 - Version 0.3.2: Implement word embeddings and address missing value/duplicate handling ✅
 - Version 0.3.3: Add Australian-specific data patterns and Excel date detection ✅
 - Version 0.3.4: Implement mixed date format detection and scientific notation detection ✅
+- Version 0.3.12: Performance optimizations for large datasets and expensive operations ✅
+- Version 0.3.13: Feature importance analysis for target variables using machine learning ✅
 
 ### Proposed Version 0.3.5 Enhancements
 Based on the completed features in 0.3.4, we recommend the following areas for improvement:

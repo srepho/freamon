@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 0.3.13 - Feature Importance Analysis
+- Added feature importance calculation for target variables using machine learning
+- Implemented support for both classification and regression targets
+- Added multiple importance methods: random forest, permutation, and SHAP
+- Created new Feature Importance tab in EDA reports
+- Enhanced EDA analyzer with feature importance analysis
+- Added comprehensive test coverage for the new functionality
+
 ## Version 0.3.12 - Performance Optimizations
 - Added data sampling option for large datasets in EDA analysis
 - Implemented caching for expensive operations like PCA and t-SNE
