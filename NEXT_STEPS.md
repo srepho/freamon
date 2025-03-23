@@ -54,6 +54,16 @@ Based on the roadmap and current status, here are the next development prioritie
   - Implement decomposition plots (trend, seasonal, residual)
   - Add autocorrelation and partial autocorrelation visualizations
 
+- **Target-Oriented EDA** (When target variable is provided)
+  - Feature Importance Section: Include visualizations showing importance of each feature related to target using correlation, ANOVA, chi-square or mutual information
+  - Target Variable Profile: Add prominent section with detailed target distribution, balance metrics, and key statistics
+  - Predictive Power Score Matrix: Implement PPS calculation to measure non-linear relationships between features and target
+  - Conditional Statistics: Show how feature distributions differ across target classes/ranges
+  - Model-Based Insights: Add simple model-based feature importance with partial dependence plots
+  - Missing Value Analysis by Target: Show if missing data patterns correlate with specific target values
+  - Executive Summary: Add concise overview with key insights about target-feature relationships
+  - Enhanced Visualizations: Color code plots by target variable and add target-based annotations
+
 ### 3. Feature Selection Methods
 
 - **Filter Methods**
