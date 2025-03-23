@@ -22,6 +22,10 @@ class TextProcessor:
     """
     Class for basic text processing with optional spaCy integration.
     
+    This class provides methods for text preprocessing, feature extraction, and 
+    document similarity analysis. It supports fitting vectorizers on training data
+    and applying them to test data, following the scikit-learn fit/transform pattern.
+    
     Parameters
     ----------
     use_spacy : bool, default=False
@@ -40,6 +44,12 @@ class TextProcessor:
         self.use_spacy = use_spacy
         self.spacy_model = spacy_model
         self.nlp = None
+        
+        # Vectorizers will be stored here when fitted
+        self.tfidf_vectorizer = None
+        self.tfidf_feature_names = None
+        self.bow_vectorizer = None
+        self.bow_feature_names = None
         
         if use_spacy:
             try:
@@ -575,6 +585,7 @@ class TextProcessor:
         ngram_range: tuple = (1, 1),
         binary: bool = False,
         prefix: str = 'bow_',
+        fit: bool = True,
     ) -> pd.DataFrame:
         """
         Create bag-of-words features from a text column.
@@ -597,6 +608,9 @@ class TextProcessor:
             Whether to use binary features (presence/absence) instead of counts.
         prefix : str, default='bow_'
             Prefix for the feature column names.
+        fit : bool, default=True
+            Whether to fit the vectorizer on the data. If False, uses a previously 
+            fitted vectorizer stored in the instance.
         
         Returns
         -------
@@ -611,21 +625,99 @@ class TextProcessor:
                 "Install it with 'pip install scikit-learn'."
             )
         
-        # Create the vectorizer
-        vectorizer = CountVectorizer(
-            max_features=max_features,
-            min_df=min_df,
-            max_df=max_df,
-            ngram_range=ngram_range,
-            binary=binary,
-        )
-        
-        # Transform the text column
-        X = vectorizer.fit_transform(df[text_column].astype(str).fillna(""))
+        if fit:
+            # Create and fit the vectorizer
+            self.bow_vectorizer = CountVectorizer(
+                max_features=max_features,
+                min_df=min_df,
+                max_df=max_df,
+                ngram_range=ngram_range,
+                binary=binary,
+            )
+            
+            # Transform the text column
+            X = self.bow_vectorizer.fit_transform(df[text_column].astype(str).fillna(""))
+            
+            # Store feature names for later use
+            self.bow_feature_names = [f"{prefix}{feature}" for feature in self.bow_vectorizer.get_feature_names_out()]
+        else:
+            # Check if the vectorizer has been fitted
+            if not hasattr(self, 'bow_vectorizer'):
+                raise ValueError(
+                    "Bag-of-words vectorizer has not been fitted. Call create_bow_features with fit=True first."
+                )
+                
+            # Use the previously fitted vectorizer
+            X = self.bow_vectorizer.transform(df[text_column].astype(str).fillna(""))
         
         # Create a dataframe with the features
-        feature_names = [f"{prefix}{feature}" for feature in vectorizer.get_feature_names_out()]
-        bow_df = pd.DataFrame(X.toarray(), columns=feature_names, index=df.index)
+        bow_df = pd.DataFrame(X.toarray(), columns=self.bow_feature_names, index=df.index)
+        
+        return bow_df
+    
+    def transform_tfidf_features(
+        self,
+        df: pd.DataFrame,
+        text_column: str,
+    ) -> pd.DataFrame:
+        """
+        Apply a previously fitted TF-IDF vectorizer to transform text data.
+        
+        Parameters
+        ----------
+        df : pd.DataFrame
+            The dataframe containing the text column.
+        text_column : str
+            The name of the column containing the text.
+            
+        Returns
+        -------
+        pd.DataFrame
+            A dataframe with the TF-IDF features.
+        """
+        if not hasattr(self, 'tfidf_vectorizer') or self.tfidf_vectorizer is None:
+            raise ValueError(
+                "TF-IDF vectorizer has not been fitted. Call create_tfidf_features with fit=True first."
+            )
+        
+        # Transform the text column
+        X = self.tfidf_vectorizer.transform(df[text_column].astype(str).fillna(""))
+        
+        # Create a dataframe with the features
+        tfidf_df = pd.DataFrame(X.toarray(), columns=self.tfidf_feature_names, index=df.index)
+        
+        return tfidf_df
+        
+    def transform_bow_features(
+        self,
+        df: pd.DataFrame,
+        text_column: str,
+    ) -> pd.DataFrame:
+        """
+        Apply a previously fitted bag-of-words vectorizer to transform text data.
+        
+        Parameters
+        ----------
+        df : pd.DataFrame
+            The dataframe containing the text column.
+        text_column : str
+            The name of the column containing the text.
+            
+        Returns
+        -------
+        pd.DataFrame
+            A dataframe with the bag-of-words features.
+        """
+        if not hasattr(self, 'bow_vectorizer') or self.bow_vectorizer is None:
+            raise ValueError(
+                "Bag-of-words vectorizer has not been fitted. Call create_bow_features with fit=True first."
+            )
+        
+        # Transform the text column
+        X = self.bow_vectorizer.transform(df[text_column].astype(str).fillna(""))
+        
+        # Create a dataframe with the features
+        bow_df = pd.DataFrame(X.toarray(), columns=self.bow_feature_names, index=df.index)
         
         return bow_df
     
@@ -638,6 +730,7 @@ class TextProcessor:
         max_df: Union[int, float] = 1.0,  # Changed from 0.5 to 1.0 for smaller test datasets
         ngram_range: tuple = (1, 1),
         prefix: str = 'tfidf_',
+        fit: bool = True,
     ) -> pd.DataFrame:
         """
         Create TF-IDF features from a text column.
@@ -658,6 +751,9 @@ class TextProcessor:
             The range of n-grams to consider.
         prefix : str, default='tfidf_'
             Prefix for the feature column names.
+        fit : bool, default=True
+            Whether to fit the vectorizer on the data. If False, uses a previously 
+            fitted vectorizer stored in the instance.
         
         Returns
         -------
@@ -672,20 +768,32 @@ class TextProcessor:
                 "Install it with 'pip install scikit-learn'."
             )
         
-        # Create the vectorizer
-        vectorizer = TfidfVectorizer(
-            max_features=max_features,
-            min_df=min_df,
-            max_df=max_df,
-            ngram_range=ngram_range,
-        )
-        
-        # Transform the text column
-        X = vectorizer.fit_transform(df[text_column].astype(str).fillna(""))
+        if fit:
+            # Create and fit the vectorizer
+            self.tfidf_vectorizer = TfidfVectorizer(
+                max_features=max_features,
+                min_df=min_df,
+                max_df=max_df,
+                ngram_range=ngram_range,
+            )
+            
+            # Transform the text column
+            X = self.tfidf_vectorizer.fit_transform(df[text_column].astype(str).fillna(""))
+            
+            # Store feature names for later use
+            self.tfidf_feature_names = [f"{prefix}{feature}" for feature in self.tfidf_vectorizer.get_feature_names_out()]
+        else:
+            # Check if the vectorizer has been fitted
+            if not hasattr(self, 'tfidf_vectorizer'):
+                raise ValueError(
+                    "TF-IDF vectorizer has not been fitted. Call create_tfidf_features with fit=True first."
+                )
+                
+            # Use the previously fitted vectorizer
+            X = self.tfidf_vectorizer.transform(df[text_column].astype(str).fillna(""))
         
         # Create a dataframe with the features
-        feature_names = [f"{prefix}{feature}" for feature in vectorizer.get_feature_names_out()]
-        tfidf_df = pd.DataFrame(X.toarray(), columns=feature_names, index=df.index)
+        tfidf_df = pd.DataFrame(X.toarray(), columns=self.tfidf_feature_names, index=df.index)
         
         return tfidf_df
         

@@ -190,7 +190,7 @@ class TestTextProcessor:
         """Test creating bag-of-words features."""
         processor = TextProcessor(use_spacy=False)
         
-        # Create BOW features
+        # Create BOW features with fit=True (default)
         bow_df = processor.create_bow_features(
             sample_df,
             "text",
@@ -205,8 +205,23 @@ class TestTextProcessor:
         assert (bow_df >= 0).all().all()
         assert (bow_df.astype(int) == bow_df).all().all()
         
+        # Check that the vectorizer was stored in the processor
+        assert hasattr(processor, 'bow_vectorizer')
+        assert processor.bow_vectorizer is not None
+        
+        # Test transform_bow_features method
+        bow_transform = processor.transform_bow_features(
+            sample_df,
+            "text"
+        )
+        
+        # Check that the transformation produces the same features
+        assert list(bow_df.columns) == list(bow_transform.columns)
+        assert bow_df.shape == bow_transform.shape
+        
         # Test with binary=True
-        bow_binary = processor.create_bow_features(
+        processor_binary = TextProcessor(use_spacy=False)
+        bow_binary = processor_binary.create_bow_features(
             sample_df,
             "text",
             max_features=10,
@@ -215,12 +230,17 @@ class TestTextProcessor:
         
         # Check that the values are binary
         assert set(bow_binary.values.flatten()) <= {0.0, 1.0}
+        
+        # Check that using transform with a new instance raises an error
+        new_processor = TextProcessor(use_spacy=False)
+        with pytest.raises(ValueError):
+            new_processor.transform_bow_features(sample_df, "text")
     
     def test_create_tfidf_features(self, sample_df):
         """Test creating TF-IDF features."""
         processor = TextProcessor(use_spacy=False)
         
-        # Create TF-IDF features
+        # Create TF-IDF features with fit=True (default)
         tfidf_df = processor.create_tfidf_features(
             sample_df,
             "text",
@@ -235,6 +255,25 @@ class TestTextProcessor:
         
         # Values should be continuous (not just integers)
         assert not (tfidf_df.astype(int) == tfidf_df).all().all()
+        
+        # Check that the vectorizer was stored in the processor
+        assert hasattr(processor, 'tfidf_vectorizer')
+        assert processor.tfidf_vectorizer is not None
+        
+        # Test transform_tfidf_features method
+        tfidf_transform = processor.transform_tfidf_features(
+            sample_df,
+            "text"
+        )
+        
+        # Check that the transformation produces the same features
+        assert list(tfidf_df.columns) == list(tfidf_transform.columns)
+        assert tfidf_df.shape == tfidf_transform.shape
+        
+        # Check that using fit=False with a new instance raises an error
+        new_processor = TextProcessor(use_spacy=False)
+        with pytest.raises(ValueError):
+            new_processor.transform_tfidf_features(sample_df, "text")
     
     @given(
         st.lists(

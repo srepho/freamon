@@ -1,10 +1,12 @@
 """
-Example demonstrating the text analytics capabilities in freamon.
+Example demonstrating the text analytics capabilities in freamon,
+including train/test splitting for TF-IDF features.
 """
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_20newsgroups
+from sklearn.model_selection import train_test_split
 
 from freamon.utils.text_utils import TextProcessor
 
@@ -128,5 +130,37 @@ readability_by_category = features_with_category.groupby('category')['text_read_
 print("\nAverage Flesch Reading Ease by category:")
 for category, score in readability_by_category.items():
     print(f"  {category}: {score:.2f}")
+
+# Train/test split for TF-IDF features example
+print("="*80)
+print("Train/Test Split for TF-IDF Features")
+print("="*80)
+
+# Split the data into training and testing sets
+train_df, test_df = train_test_split(df, test_size=0.3, random_state=42)
+print(f"Training set size: {len(train_df)}")
+print(f"Testing set size: {len(test_df)}")
+
+# Create and fit TF-IDF features on training data
+print("\nCreating TF-IDF features on training data...")
+train_tfidf = processor.create_tfidf_features(
+    train_df,
+    'text',
+    max_features=20
+    # Default behavior is to fit=True
+)
+print(f"Training TF-IDF shape: {train_tfidf.shape}")
+print(f"First 5 TF-IDF feature names: {list(train_tfidf.columns[:5])}")
+
+# Apply the same transformation to test data
+print("\nApplying TF-IDF transformation to test data...")
+test_tfidf = processor.transform_tfidf_features(
+    test_df,
+    'text'
+)
+print(f"Test TF-IDF shape: {test_tfidf.shape}")
+
+# Verify that training and test features have the same columns
+print(f"\nSame feature names in train and test: {list(train_tfidf.columns) == list(test_tfidf.columns)}")
 
 print("\nExample complete!")
