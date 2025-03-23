@@ -51,10 +51,10 @@ A package to make data science projects on tabular data easier. Named after the 
 
 ```bash
 # Basic installation
-pip install freamon==0.3.4
+pip install freamon==0.3.6
 
 # With all optional dependencies (no development tools)
-pip install freamon[all]==0.3.4
+pip install freamon[all]==0.3.6
 
 # With all dependencies including development tools
 pip install freamon[full]
@@ -78,7 +78,82 @@ pip install -e ".[dev,all]"  # Or use pip install -e ".[full]" for all dependenc
 
 ## Quick Start
 
-### Time Series Modeling and Visualization (New!)
+### Optimized Data Type Detection (New!)
+
+```python
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from freamon.utils.datatype_detector import DataTypeDetector
+
+# Sample data with various data types
+data = {
+    'id': ['ID001', 'ID002', 'ID003', 'ID004', 'ID005'],
+    'date_iso': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05'],
+    'date_us': ['01/06/2023', '01/07/2023', '01/08/2023', '01/09/2023', '01/10/2023'],
+    'date_uk': ['11/01/2023', '12/01/2023', '13/01/2023', '14/01/2023', '15/01/2023'],
+    'date_mixed': ['2023-01-16', '01/17/2023', '18/01/2023', '2023-01-19', '01/20/2023'],
+    'excel_date': [44927, 44928, 44929, 44930, 44931],  # Excel dates (days since 1899-12-30)
+    'month_year': ['Jan 2023', 'Feb 2023', 'Mar 2023', 'Apr 2023', 'May 2023'],
+    'australian_postcode': ['2000', '3000', '4000', '5000', '6000'],
+    'australian_phone': ['02 9876 5432', '03 8765 4321', '08 7654 3210', '07 6543 2109', '04 5432 1098'],
+    'continuous': [1.23, 4.56, 7.89, 10.11, 12.13],
+    'categorical': [1, 2, 1, 3, 2],
+    'scientific': ['1.2e-3', '3.4e-4', '5.6e-5', '7.8e-6', '9.0e-7'],
+    'text_data': ['Sample text 1', 'Sample text 2', 'Sample text 3', 'Sample text 4', 'Sample text 5'],
+    'mixed_with_nan': [44927, np.nan, 44929, np.nan, 44931]  # Excel dates with missing values
+}
+
+# Create DataFrame
+df = pd.DataFrame(data)
+print(f"Data shape: {df.shape}")
+
+# Initialize detector with optimizations enabled
+detector = DataTypeDetector(
+    df,
+    optimized=True,              # Enable performance optimizations
+    use_pyarrow=True,            # Use PyArrow for faster processing
+    sample_size=1000,            # Set maximum sample size for large datasets
+    detect_semantic_types=True,  # Enable semantic type detection
+    distinguish_numeric=True     # Distinguish between categorical and continuous numeric
+)
+
+# Detect all types
+detector.detect_all_types()
+
+# View detected types
+print("\nDetected Column Types:")
+for col, type_info in detector.column_types.items():
+    print(f"{col}: {type_info}")
+
+# View semantic types
+print("\nSemantic Types:")
+for col, sem_type in detector.semantic_types.items():
+    if sem_type:  # Only show columns with detected semantic types
+        print(f"{col}: {sem_type}")
+
+# Get conversion suggestions
+print("\nSuggested Conversions:")
+conversions = detector.generate_conversion_suggestions()
+for col, suggestion in conversions.items():
+    print(f"{col}: {suggestion}")
+
+# Convert columns to appropriate types
+converted_df = detector.convert_types()
+print("\nDataFrame info after conversion:")
+print(converted_df.dtypes)
+
+# Display visual report (in Jupyter notebooks)
+# detector.display_detection_report()
+
+# For standard Python environments, save HTML report
+report_html = detector.get_column_report_html()
+with open("datatype_detection_report.html", "w") as f:
+    f.write(report_html)
+print("\nSaved HTML report to 'datatype_detection_report.html'")
+```
+
+### Time Series Modeling and Visualization
 
 ```python
 import pandas as pd
@@ -484,6 +559,7 @@ The package includes several example scripts to demonstrate its functionality:
 - **multivariate_analysis_example.py** - Multivariate feature exploration
 - **mixed_date_formats_example.py** - Handling date columns with multiple formats
 - **scientific_notation_example.py** - Detecting and visualizing scientific notation data
+- **datatype_detector_example.py** - Optimized data type detection for large datasets
 
 Run any example by navigating to the examples directory and executing:
 

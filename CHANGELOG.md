@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2025-06-05
+
+### Added
+- Performance optimizations for DataTypeDetector complete:
+  - Added batch processing for columns with similar types
+  - Implemented early termination for pattern matching
+  - Added vectorized operations for better performance
+  - Fixed and improved styling for display_detection_report method
+  - Added comprehensive datatype_detector_example.py to demonstrate optimizations
+  - Updated README with optimized DataTypeDetector example
+  - Updated NEXT_STEPS.md to reflect completed optimizations
+
+### Fixed
+- Fixed display_detection_report styling method for latest pandas
+  - Updated styling functions to work with newer pandas styling API
+  - Split single style_cells function into separate functions per column
+  - Fixed TypeError when running display_detection_report in Jupyter
+
 ## [0.3.5] - 2025-05-25
 
 ### Added
