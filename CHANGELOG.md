@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 0.3.11 - Matplotlib Warning Fixes
+- Fixed matplotlib warnings about using categorical units for numeric data
+- Resolved FutureWarnings related to pandas groupby observed parameter
+- Enhanced year, month, and weekday visualization to avoid matplotlib warnings
+- Improved chart display for datetime distributions
+
 ## Version 0.3.10 - EDA Datetime Plotting Fix
 - Fixed error in EDA datetime plotting with floating-point year values (like '2024.0')
 - Enhanced robustness of year value handling in EDA charts

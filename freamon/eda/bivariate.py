@@ -296,7 +296,8 @@ def analyze_feature_target(
         result["type"] = "categorical_vs_numeric"
         
         # Calculate statistics by feature value
-        grouped_stats = df_clean.groupby(feature)[target].agg(['mean', 'std', 'count'])
+        # Set observed=True to address FutureWarning about observed parameter
+        grouped_stats = df_clean.groupby(feature, observed=True)[target].agg(['mean', 'std', 'count'])
         grouped_stats = grouped_stats.reset_index()
         
         # Convert to dictionary

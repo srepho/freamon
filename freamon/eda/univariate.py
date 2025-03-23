@@ -392,14 +392,17 @@ def analyze_datetime(
                             horizontalalignment='center', verticalalignment='center',
                             transform=ax.transAxes)
                 else:
+                    # Explicitly convert years to numeric type to avoid categorical warnings
+                    years_array = np.array(years, dtype=np.int64)
+                    
                     # Create bar chart with the valid data
-                    ax.bar(years, counts)
+                    ax.bar(years_array, counts)
                     ax.set_title("Distribution by Year")
                     ax.set_xlabel("Year")
                     ax.set_ylabel("Count")
                     
                     # Set x-ticks to show all years
-                    ax.set_xticks(years)
+                    ax.set_xticks(years_array)
             except Exception as e:
                 # Catch any other errors and display a message
                 logger.error(f"Error creating year distribution chart: {str(e)}")
@@ -415,7 +418,16 @@ def analyze_datetime(
             months = list(stats["month_counts"].keys())
             counts = list(stats["month_counts"].values())
             
-            ax.bar(months, counts)
+            # Convert month strings to categorical with specific order to avoid warnings
+            month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            months_cat = pd.Categorical(months, categories=month_order, ordered=True)
+            
+            # Use the categorical index for plotting
+            months_positions = range(len(months))
+            ax.bar(months_positions, counts)
+            ax.set_xticks(months_positions)
+            ax.set_xticklabels(months)
+            
             ax.set_title("Distribution by Month")
             ax.set_xlabel("Month")
             ax.set_ylabel("Count")
@@ -428,7 +440,16 @@ def analyze_datetime(
             weekdays = list(stats["weekday_counts"].keys())
             counts = list(stats["weekday_counts"].values())
             
-            ax.bar(weekdays, counts)
+            # Convert weekday strings to categorical with specific order to avoid warnings
+            weekday_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            weekdays_cat = pd.Categorical(weekdays, categories=weekday_order, ordered=True)
+            
+            # Use the categorical index for plotting
+            weekday_positions = range(len(weekdays))
+            ax.bar(weekday_positions, counts)
+            ax.set_xticks(weekday_positions)
+            ax.set_xticklabels(weekdays)
+            
             ax.set_title("Distribution by Weekday")
             ax.set_xlabel("Weekday")
             ax.set_ylabel("Count")
