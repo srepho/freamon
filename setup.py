@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="freamon",
-    version="0.3.17",
+    version="0.3.18",
     packages=find_packages(),
     install_requires=[
         "numpy",
@@ -15,6 +15,7 @@ setup(
         "seaborn",
         "joblib",
         "category_encoders",
+        "networkx",
     ],
     extras_require={
         "dev": [

@@ -1,5 +1,15 @@
 # Changelog
 
+## Version 0.3.18 - Text Deduplication Module
+- Added comprehensive text deduplication functionality with dedicated modules
+- Implemented exact deduplication methods: hash-based and n-gram fingerprinting
+- Added fuzzy deduplication with Levenshtein, Jaccard, cosine, and embedding similarity
+- Implemented scalable deduplication with LSH (Locality-Sensitive Hashing)
+- Added document fingerprinting with MinHash and SimHash
+- Added clustering-based deduplication with hierarchical and DBSCAN methods
+- Created example script with benchmarking for different deduplication methods
+- Integrated with existing TextProcessor functionality for seamless use
+
 ## Version 0.3.17 - Enhanced EDA for Large Datasets & Jupyter Export
 - Added smart data table rendering showing first/last rows with row count indicators
 - Implemented lazy loading for images to improve HTML report performance

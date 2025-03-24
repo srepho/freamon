@@ -1,146 +1,92 @@
+#!/usr/bin/env python3
 """
-Build and upload the freamon package to PyPI.
-
-This script:
-1. Cleans up old builds
-2. Builds the package (wheel and sdist)
-3. Uploads the package to PyPI
+Build and upload freamon package to PyPI.
 """
 import os
-import subprocess
-import shutil
 import sys
+import subprocess
+import argparse
 
-VERSION = "0.3.17"
-PACKAGE_NAME = "freamon"
+def run_command(command, exit_on_error=True):
+    """Run a command and optionally exit on error."""
+    print(f"Running: {command}")
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Error executing command: {command}")
+        print(f"Error output: {result.stderr}")
+        if exit_on_error:
+            sys.exit(1)
+        return False
+    print(result.stdout)
+    return True
 
-def clean():
-    """Clean up old builds and distribution files."""
-    print("Cleaning up old builds...")
+def check_dependencies():
+    """Check for required build dependencies."""
+    run_command("python -m pip install --upgrade pip")
+    run_command("python -m pip install --upgrade build")
+    run_command("python -m pip install --upgrade twine")
+
+def clean_previous_builds():
+    """Clean up previous build artifacts."""
     if os.path.exists("dist"):
-        shutil.rmtree("dist")
+        run_command("rm -rf dist/*")
     if os.path.exists("build"):
-        shutil.rmtree("build")
-    if os.path.exists(f"{PACKAGE_NAME}.egg-info"):
-        shutil.rmtree(f"{PACKAGE_NAME}.egg-info")
-    
-    print("Cleanup complete!")
+        run_command("rm -rf build")
+    if os.path.exists("freamon.egg-info"):
+        run_command("rm -rf freamon.egg-info")
 
-def build():
-    """Build the package."""
-    print(f"Building {PACKAGE_NAME} {VERSION}...")
-    
-    # Check if we have the build package
-    try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "build"])
-    except Exception as e:
-        print(f"Error installing build package: {e}")
-        return False
-    
-    # Build the package
-    try:
-        subprocess.run([sys.executable, "-m", "build"], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error building package: {e}")
-        return False
-    
-    print("Build complete!")
-    return True
+def build_package():
+    """Build source distribution and wheel."""
+    run_command("python -m build")
 
-def upload():
-    """Upload the package to PyPI."""
-    print(f"Uploading {PACKAGE_NAME} {VERSION} to PyPI...")
-    
-    # Check if we have twine
-    try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "twine"])
-    except Exception as e:
-        print(f"Error installing twine: {e}")
-        return False
-    
-    # Upload the package
-    try:
-        subprocess.run([
-            sys.executable, "-m", "twine", "upload", 
-            "dist/*"
-        ], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error uploading package: {e}")
-        return False
-    
-    print("Upload complete!")
-    
-    # Copy files to latest dist folder
-    try:
-        if not os.path.exists("dist_latest"):
-            os.makedirs("dist_latest")
-        
-        # Copy all files from dist to dist_latest
-        for file in os.listdir("dist"):
-            shutil.copy(os.path.join("dist", file), os.path.join("dist_latest", file))
-        
-        print("Copied dist files to dist_latest folder!")
-    except Exception as e:
-        print(f"Error copying dist files: {e}")
-    
-    return True
+def check_package():
+    """Check package for PyPI compatibility."""
+    run_command("python -m twine check dist/*")
+
+def upload_to_pypi(test=False):
+    """Upload package to PyPI or TestPyPI."""
+    if test:
+        run_command("python -m twine upload --repository testpypi dist/*")
+    else:
+        run_command("python -m twine upload dist/*")
+
+def create_latest_dist_copy():
+    """Create a copy of the latest distribution in dist_latest."""
+    if not os.path.exists("dist_latest"):
+        os.makedirs("dist_latest")
+    run_command("cp dist/* dist_latest/")
 
 def main():
-    """Run the build and upload process."""
-    print(f"=== Building and uploading {PACKAGE_NAME} {VERSION} ===")
+    """Main function to build and upload the package."""
+    parser = argparse.ArgumentParser(description="Build and upload freamon package to PyPI")
+    parser.add_argument("--test", action="store_true", help="Upload to TestPyPI instead of PyPI")
+    parser.add_argument("--build-only", action="store_true", help="Build package without uploading")
+    parser.add_argument("--skip-checks", action="store_true", help="Skip dependency checks")
     
-    # Verify version numbers match
-    print("Verifying version numbers...")
+    args = parser.parse_args()
     
-    # Check pyproject.toml
-    with open("pyproject.toml", "r") as f:
-        pyproject_content = f.read()
-        if f'version = "{VERSION}"' not in pyproject_content:
-            print(f"ERROR: Version in pyproject.toml does not match {VERSION}")
-            return False
+    if not args.skip_checks:
+        print("Checking dependencies...")
+        check_dependencies()
     
-    # Check __init__.py
-    with open(f"{PACKAGE_NAME}/__init__.py", "r") as f:
-        init_content = f.read()
-        if f'__version__ = "{VERSION}"' not in init_content:
-            print(f"ERROR: Version in {PACKAGE_NAME}/__init__.py does not match {VERSION}")
-            return False
+    print("Cleaning previous builds...")
+    clean_previous_builds()
     
-    # Check setup.py
-    with open("setup.py", "r") as f:
-        setup_content = f.read()
-        if f'version="{VERSION}"' not in setup_content:
-            print(f"ERROR: Version in setup.py does not match {VERSION}")
-            return False
+    print("Building package...")
+    build_package()
     
-    print("All version numbers match!")
+    print("Checking package...")
+    check_package()
     
-    # Clean up old builds
-    clean()
+    print("Creating copy in dist_latest...")
+    create_latest_dist_copy()
     
-    # Build the package
-    if not build():
-        return False
-    
-    # Confirm upload
-    while True:
-        response = input(f"Upload {PACKAGE_NAME} {VERSION} to PyPI? (y/n): ")
-        if response.lower() == 'y':
-            break
-        elif response.lower() == 'n':
-            print("Upload canceled.")
-            return False
-        else:
-            print("Please enter 'y' or 'n'.")
-    
-    # Upload the package
-    if not upload():
-        return False
-    
-    print(f"=== Successfully built and uploaded {PACKAGE_NAME} {VERSION} ===")
-    print(f"Package available at: https://pypi.org/project/{PACKAGE_NAME}/{VERSION}/")
-    return True
+    if not args.build_only:
+        print(f"Uploading to {'TestPyPI' if args.test else 'PyPI'}...")
+        upload_to_pypi(args.test)
+        print("Upload complete!")
+    else:
+        print("Package built successfully. Skipping upload as requested.")
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    main()

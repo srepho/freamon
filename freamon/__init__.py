@@ -2,7 +2,7 @@
 Freamon: A package to make data science projects on tabular data easier.
 """
 
-__version__ = "0.3.17"
+__version__ = "0.3.18"
 
 # Import key components for convenient access
 from freamon.modeling.lightgbm import LightGBMModel
