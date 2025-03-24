@@ -2,7 +2,7 @@
 
 ## Project Status
 
-Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.14
+Freamon is a comprehensive package for data science and machine learning on tabular data. Current version: 0.3.20
 
 The package has recently completed several major features:
 - Pipeline system with visualization and persistence
@@ -17,32 +17,108 @@ The package has recently completed several major features:
 - Advanced data type detection with Australian-specific patterns
 - Mixed date format detection and multi-pass conversion
 - Scientific notation detection for numeric columns
+- Text deduplication functionality with multiple methods (v0.3.18)
+- Enhanced EDA reporting with optimized images and fixed accordions (v0.3.19)
+- Deduplication tracking and result mapping functionality (v0.3.20)
 - Documentation and examples for all new features
 
 ## Priority Development Tasks
 
 Based on the roadmap and current status, here are the next development priorities:
 
-### 1. Advanced NLP Capabilities
+## 1. Expand Deduplication Tracking Functionality
 
-- **Topic Modeling** ✅
-  - Implement Latent Dirichlet Allocation (LDA) for topic extraction ✅
-  - Add Non-Negative Matrix Factorization (NMF) as alternative algorithm ✅
-  - Create topic coherence metrics and visualization ✅
-  - Add topic-based document clustering ✅
+### 1.1 Pipeline Integration
+- [ ] Create a `TrackingPipelineStep` base class that automatically handles index mapping
+- [ ] Add tracking support to all existing pipeline steps
+- [ ] Implement a `DeduplicationPipelineStep` with configurable methods
+- [ ] Add methods to visualize flow of data through pipeline steps
 
-- **Word Embeddings Integration** ✅
-  - Add support for pre-trained word embeddings (Word2Vec, GloVe, FastText) ✅
-  - Implement document-level embeddings for similarity and clustering ✅
-  - Create visualization tools for word and document embeddings ✅
-  - Add embedding-based feature engineering ✅
+### 1.2 Performance Visualization
+- [ ] Implement automatic comparison of model performance with/without deduplication
+- [ ] Create visualizations showing impact of different deduplication strategies on ML metrics
+- [ ] Add a "duplicate impact score" to identify how duplicates affect model results
+- [ ] Implement heatmaps showing clusters of similar items and their importance
 
-- **Advanced Text Classification**
-  - Implement pipeline for text classification tasks
-  - Add support for multi-label and hierarchical classification
-  - Create evaluation metrics specific to text classification
+### 1.3 Scale Enhancements
+- [ ] Implement chunked processing for large datasets (10M+ records)
+- [ ] Add memory-efficient sparse representation for large mapping dictionaries
+- [ ] Support out-of-core processing for deduplication on limited memory
+- [ ] Add distributed processing support via Dask integration
+- [ ] Implement progress tracking and time estimation for large operations
 
-### 2. EDA Module Enhancements
+## 2. Testing and Code Quality
+
+### 2.1 Unit Tests
+- [ ] Create comprehensive tests for `IndexTracker` with edge cases
+- [ ] Add tests for `DeduplicationTracker` visualization functions
+- [ ] Test `IndexTrackingPipeline` with various pipeline configurations
+- [ ] Add tests for custom deduplication pipeline steps
+- [ ] Test index mapping persistence across all operations
+
+### 2.2 Integration Tests
+- [ ] Test full deduplication workflow with real datasets
+- [ ] Add integration tests between tracking and ML components
+- [ ] Create tests for pipeline tracking through multiple transformations
+- [ ] Test HTML report generation with tracking information
+- [ ] Verify correct operation with pandas, polars, and dask backends
+
+### 2.3 Performance Testing
+- [ ] Create benchmarks for deduplication methods on varying dataset sizes
+- [ ] Add performance regression tests for mapping operations
+- [ ] Test memory consumption patterns across different workloads
+- [ ] Benchmark visualization and report generation components
+- [ ] Create tooling to automatically detect performance regressions
+
+## 3. Documentation Enhancements
+
+### 3.1 Tutorials and Guides
+- [ ] Create step-by-step tutorial notebooks for common tracking workflows:
+  - Basic deduplication tracking
+  - Advanced visualization and reporting
+  - Pipeline integration
+  - ML model training with duplicate-aware evaluation
+- [ ] Add real-world examples with actual datasets
+- [ ] Create visual guides explaining the deduplication process
+
+### 3.2 API Documentation
+- [ ] Add detailed docstrings to all classes and methods
+- [ ] Create comprehensive API reference documentation
+- [ ] Add code examples for all key functions
+- [ ] Document parameter choices and their implications
+- [ ] Add typehints to all functions for better IDE support
+
+### 3.3 Architectural Documentation
+- [ ] Create diagrams explaining index mapping flow
+- [ ] Add sequence diagrams showing data transformation with tracking
+- [ ] Document internal architecture and design decisions
+- [ ] Create contributor guidelines for extending the tracking system
+- [ ] Add performance guidelines for large-scale usage
+
+## 4. Feature Additions
+
+### 4.1 Smart Deduplication
+- [ ] Implement automatic method recommendation based on data characteristics
+- [ ] Add adaptive threshold selection for similarity-based deduplication
+- [ ] Create a meta-deduplication approach combining multiple methods
+- [ ] Implement confidence scores for duplicate identification
+- [ ] Add active learning capabilities to improve duplicate detection
+
+### 4.2 Parallel Processing
+- [ ] Add multi-core processing for deduplication operations
+- [ ] Implement chunk-based parallel processing for large datasets
+- [ ] Add GPU acceleration for similarity calculations
+- [ ] Support distributed processing via Dask or Ray
+- [ ] Implement fault tolerance for long-running operations
+
+### 4.3 Interactive Visualization
+- [ ] Create interactive network graphs for duplicate relationships
+- [ ] Implement drill-down capability to explore duplicate clusters
+- [ ] Add interactive thresholding to visualize impacts of different settings
+- [ ] Create dashboards showing deduplication metrics and impact
+- [ ] Add export capabilities for visualization results
+
+## 5. EDA Module Enhancements
 
 - **Multivariate Analysis**
   - Implement PCA visualization for high-dimensional data
@@ -64,7 +140,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Executive Summary: Add concise overview with key insights about target-feature relationships
   - Enhanced Visualizations: Color code plots by target variable and add target-based annotations
 
-### 3. Feature Selection Methods
+## 6. Feature Selection Methods
 
 - **Filter Methods**
   - Implement chi-square feature selection for categorical features
@@ -78,7 +154,7 @@ Based on the roadmap and current status, here are the next development prioritie
   - Implement Lasso and Ridge Regression based feature selection
   - Add regularization-based feature selection for tree models
 
-### 4. Large Dataset Handling
+## 7. Large Dataset Handling
 
 - **Chunking Mechanisms**
   - Implement streaming data processing for large datasets
@@ -88,154 +164,34 @@ Based on the roadmap and current status, here are the next development prioritie
   - Add Dask integration for large-scale data processing
   - Implement parallel processing for intensive operations
 
-### 5. AutoML Capabilities
+## Implementation Timeline
 
-- **Automatic Hyperparameter Optimization**
-  - Expand existing LightGBM tuning to other models
-  - Implement pipeline-level optimization
+### Phase 1 (1-2 months)
+- Complete unit and integration tests for deduplication tracking
+- Implement pipeline integration for deduplication tracking
+- Add basic visualization enhancements
+- Create tutorial documentation
 
-- **Model Selection**
-  - Add automatic model selection based on problem type
-  - Implement ensemble methods for combining multiple models
+### Phase 2 (2-3 months)
+- Implement scale enhancements for large datasets
+- Add advanced performance visualization
+- Develop smart deduplication features
+- Create comprehensive API documentation
 
-### 6. Quality Improvements
+### Phase 3 (3-4 months)
+- Implement parallel processing capabilities
+- Add interactive visualization tools
+- Create architectural documentation
+- Develop performance benchmarking suite
 
-- **Testing**
-  - Fix failing tests in test suite
-  - Improve test coverage for new features
-  - Add integration tests for complete workflows
+## Getting Started
 
-- **Documentation**
-  - Complete documentation for all modules
-  - Add more examples showcasing feature combinations
-  - Create tutorials for common workflows
+To contribute to these development efforts:
 
-## Bug Fixes and Technical Debt
+1. Pick an item from the roadmap
+2. Create a feature branch from `main`
+3. Implement and test your changes
+4. Add appropriate documentation
+5. Submit a pull request with a clear description of changes
 
-### Completed Fixes (v0.3.0 patch)
-
-- ✅ Enhanced text processing with multiple backends:
-  - Added Polars integration for high-performance string operations
-  - Added PyArrow backend for optimized memory usage
-  - Implemented parallel processing for large datasets
-  - Added batch processing for spaCy operations
-  - Implemented auto-selection of optimal backend based on data size
-
-- ✅ Improved time series regression capabilities:
-  - Added helper functions for model creation
-  - Added visualization tools for model evaluation
-  - Added feature importance grouping by feature types
-
-### Remaining Issues to Address
-
-- Polars integration (time_unit parameter in datetime conversion)
-- ShapIQ-related tests (graceful handling when library not available)
-- Pipeline visualization (handle FeatureEngineer initialization)
-- Early stopping issue with cosine annealing
-- Charts/HTML generation in EDA module
-- Fix pandas DeprecationWarning for is_categorical_dtype
-
-## Release Planning
-
-### Version 0.3.x Patches
-
-- Version 0.3.1: Implement advanced NLP capabilities (topic modeling) ✅
-- Version 0.3.2: Implement word embeddings and address missing value/duplicate handling ✅
-- Version 0.3.3: Add Australian-specific data patterns and Excel date detection ✅
-- Version 0.3.4: Implement mixed date format detection and scientific notation detection ✅
-- Version 0.3.12: Performance optimizations for large datasets and expensive operations ✅
-- Version 0.3.13: Feature importance analysis for target variables using machine learning ✅
-- Version 0.3.14: Fix matplotlib currency symbol display and improve HTML report accordions ✅
-
-### Proposed Version 0.3.5 Enhancements
-Based on the completed features in 0.3.4, we recommend the following areas for improvement:
-
-1. **Enhanced Multi-Pass Date Format Detection**
-   - Add a more sophisticated pattern detection system for date formats
-   - Add support for international date formats (European, Asian patterns)
-   - Implement format prioritization based on frequency and locale
-
-2. **Expanded Data Type Detection**
-   - Add detection for more complex financial data types (options symbols, futures contracts)
-   - Implement geographic coordinates detection (lat/long pairs)
-   - Add support for more international data patterns beyond Australian
-
-3. **Visualization Improvements for Data Types**
-   - Create interactive visualizations for detected data types
-   - Add dashboard for data type quality assessment
-   - Implement automatic visualization selection based on detected types
-
-4. **Performance Optimizations for Data Type Detection** ✅
-   - Benchmark and optimize the datatype detector for very large datasets ✅
-   - Implement smarter sampling strategies for better performance ✅
-   - Add parallel processing for multi-column detection
-   - Implement caching for intermediate results ✅
-   - Add PyArrow integration for faster processing ✅
-   - Add vectorized operations for better performance ✅
-   - Implement early termination for pattern matching ✅
-   - Add batch processing for columns with similar types ✅
-
-5. **Integration Enhancements**
-   - Create pipeline steps specifically for data type detection and conversion
-   - Better integrate with popular data validation libraries like Pandera or Great Expectations
-   - Add export capabilities to document the detected types
-
-6. **Automated Data Quality Assessment**
-   - Add anomaly detection based on semantic types
-   - Implement quality scoring for data based on type compliance
-   - Create automated data cleansing recommendations
-
-7. **Documentation and Example Expansion**
-   - Create a comprehensive user guide with visual examples
-   - Add Jupyter notebook tutorials for all features
-   - Create more real-world usage examples with public datasets
-
-8. **API Standardization**
-   - Review and standardize parameter names across the library
-   - Implement a more consistent return type pattern
-   - Add proper deprecation paths for evolving interfaces
-
-9. **Testing Infrastructure**
-   - Add property-based testing for data type detection
-   - Implement more comprehensive cross-validation testing
-   - Create benchmark test suites for performance monitoring
-
-10. **Cloud Integration**
-    - Add support for detecting types in cloud data sources
-    - Implement streaming type detection for large datasets
-    - Create integration with data catalogs for type registration
-
-### Version 0.4.0
-
-- Implement EDA module enhancements
-- Add feature selection methods
-- Improve large dataset handling
-
-### Version 0.5.0
-
-- Add AutoML capabilities
-- Implement ensemble methods
-- Add web-based dashboard for exploration
-
-## Getting Involved
-
-Contributors can help with:
-
-1. Implementing advanced NLP capabilities
-2. Fixing failing tests
-3. Improving documentation
-4. Adding examples demonstrating features
-
-To get started, install the development version:
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/freamon.git
-cd freamon
-
-# Install in development mode with all dependencies
-pip install -e ".[dev,all]"
-
-# Run tests to identify issues
-pytest
-```
+Refer to the development guidelines in CLAUDE.md and the project README for detailed contribution information.
