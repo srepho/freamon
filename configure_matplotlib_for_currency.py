@@ -1,47 +1,45 @@
 """
-Helper script to configure matplotlib to properly handle currency symbols, 
-especially dollar signs, in plot labels and text.
+Helper script for patching matplotlib to handle currency symbols.
 
-This script applies comprehensive patches to matplotlib and the freamon EDA module
-to prevent crashes and errors when displaying currency values in reports and plots.
-
-Example usage:
--------------
-# Import the helper function
-from configure_matplotlib_for_currency import patch_freamon
-
-# Apply the patches
-patch_freamon()
-
-# Now use freamon as usual
-from freamon.eda import EDAAnalyzer
-analyzer = EDAAnalyzer(df)
-analyzer.run_full_analysis(output_path='robust_EDA_report.html')
+This script provides a simple entry point to apply all the necessary patches
+to make matplotlib and the freamon EDA module work correctly with text
+containing dollar signs and other special characters.
 """
 
-from freamon.utils.matplotlib_fixes import patch_freamon_eda, configure_matplotlib_for_currency
+from freamon.utils.matplotlib_fixes import (
+    configure_matplotlib_for_currency,
+    apply_comprehensive_matplotlib_patches,
+    patch_freamon_eda
+)
 
 def patch_freamon():
     """
-    Apply comprehensive patches to matplotlib and freamon.
+    Apply all necessary patches to make freamon work with currency symbols.
     
     This function:
-    1. Configures matplotlib to properly handle currency symbols
-    2. Patches the freamon EDA module to handle errors gracefully
-    3. Makes EDA reports more robust against rendering issues
+    1. Configures matplotlib to handle dollar signs and special characters
+    2. Patches the text rendering functionality to avoid LaTeX interpretation
+    3. Patches the freamon EDA module to handle errors gracefully
     
     Returns
     -------
     bool
-        True if patching was successful, False otherwise
+        True if all patches were successfully applied, False otherwise
     """
-    # Apply all patches
-    success = patch_freamon_eda()
-    if success:
-        print("Successfully applied EDA and matplotlib patches.")
-        print("You can now safely use freamon with data containing currency symbols.")
-    return success
+    # First apply the matplotlib configuration
+    matplotlib_config_success = configure_matplotlib_for_currency()
+    
+    # Apply comprehensive patches to fix text rendering
+    matplotlib_patches_success = apply_comprehensive_matplotlib_patches()
+    
+    # Patch the freamon EDA module
+    freamon_patches_success = patch_freamon_eda()
+    
+    return matplotlib_config_success and matplotlib_patches_success and freamon_patches_success
 
-# Apply patches when script is run directly
 if __name__ == "__main__":
-    patch_freamon()
+    success = patch_freamon()
+    if success:
+        print("Successfully applied all patches to handle currency symbols")
+    else:
+        print("Warning: Some patches could not be applied")

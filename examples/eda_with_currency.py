@@ -1,99 +1,92 @@
 """
-Example demonstrating how to use the patched EDA module with data containing
-currency symbols and other special characters.
+Example of using Freamon EDA with financial data containing currency symbols.
 
-This example shows how to apply the robust patches and generate a report without errors.
+This example demonstrates how to use the patched version of Freamon EDA
+to analyze financial data containing dollar signs and other special characters
+that would normally cause rendering errors in matplotlib.
 """
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+import os
 
-# Apply the patches to make EDA more robust
-from configure_matplotlib_for_currency import patch_freamon
-patch_freamon()
+# Add the project root to the path if running the example directly
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Create a sample dataframe with financial data including currency values
-def create_financial_dataframe(n=1000):
-    """Create a sample financial dataframe with currency values."""
-    np.random.seed(42)
-    
-    # Generate dates for a year of daily data
-    dates = pd.date_range(start='2023-01-01', periods=n)
-    
-    # Create base data
-    df = pd.DataFrame({
-        'date': dates,
-        'product_id': np.random.randint(1, 11, n),
-        'store_id': np.random.randint(1, 6, n),
-        'revenue': np.random.uniform(1000, 10000, n).round(2),
-        'cost': np.random.uniform(500, 8000, n).round(2),
-        'units_sold': np.random.randint(1, 100, n),
-        'discount_%': np.random.uniform(0, 30, n).round(1)
-    })
-    
-    # Calculate profit
-    df['profit'] = (df['revenue'] - df['cost']).round(2)
-    
-    # Format currency columns with dollar signs
-    df['revenue_$'] = df['revenue'].apply(lambda x: f"${x:.2f}")
-    df['cost_$'] = df['cost'].apply(lambda x: f"${x:.2f}")
-    df['profit_$'] = df['profit'].apply(lambda x: f"${x:.2f}")
-    
-    # Add profit margin with percentage
-    df['profit_margin_%'] = (df['profit'] / df['revenue'] * 100).round(2)
-    
-    # Create product categories with underscores (which can cause LaTeX issues)
-    products = {
-        1: 'electronics_large', 
-        2: 'electronics_small', 
-        3: 'home_goods', 
-        4: 'kitchen_appliances',
-        5: 'office_supplies', 
-        6: 'furniture_large', 
-        7: 'furniture_small',
-        8: 'clothing_adult', 
-        9: 'clothing_child', 
-        10: 'misc_items'
-    }
-    df['product_category'] = df['product_id'].map(products)
-    
-    # Add some metrics with special characters that might cause issues
-    df['revenue_per_unit'] = (df['revenue'] / df['units_sold']).round(2)
-    df['revenue/unit_$'] = df['revenue_per_unit'].apply(lambda x: f"${x:.2f}")
-    
-    return df
+# Apply the patches for matplotlib and freamon EDA
+from freamon.utils.matplotlib_fixes import apply_comprehensive_matplotlib_patches, patch_freamon_eda
 
-# Create and display the dataframe
-df = create_financial_dataframe()
-print("Sample financial dataframe created:")
+apply_comprehensive_matplotlib_patches()
+patch_freamon_eda()
+
+# Create sample financial dataset
+np.random.seed(42)
+n_samples = 100
+
+# Generate some realistic financial data
+df = pd.DataFrame({
+    'Product_ID': [f'PROD-{i:04d}' for i in range(1, n_samples + 1)],
+    'Category': np.random.choice(['Electronics', 'Clothing', 'Food', 'Home & Garden'], n_samples),
+    'Price': [f"${np.random.uniform(10, 1000):.2f}" for _ in range(n_samples)],
+    'Discount': [f"{np.random.uniform(0, 30):.1f}%" for _ in range(n_samples)],
+    'Rating': np.random.uniform(1, 5, n_samples),
+    'Stock': np.random.randint(0, 1000, n_samples),
+    'Profit_Margin': [f"${np.random.uniform(1, 100):.2f}" for _ in range(n_samples)],
+    'Supplier_Code': [f"SUP_{np.random.choice(['A', 'B', 'C', 'D', 'E'])}{np.random.randint(100, 999)}" for _ in range(n_samples)],
+    'Last_Restocked': pd.date_range(start='2023-01-01', periods=n_samples),
+})
+
+# Add a numeric price column for analysis
+df['Price_Numeric'] = df['Price'].apply(lambda x: float(x.replace('$', '').replace(',', '')))
+df['Profit_Margin_Numeric'] = df['Profit_Margin'].apply(lambda x: float(x.replace('$', '').replace(',', '')))
+df['Discount_Numeric'] = df['Discount'].apply(lambda x: float(x.replace('%', '')))
+
+# Print some sample data
+print("Sample financial data:")
 print(df.head())
 
-# Now run EDA with the patched version
-print("\nRunning EDA analysis...")
-from freamon.eda import EDAAnalyzer
+# Run EDA analysis
+from freamon.eda.analyzer import EDAAnalyzer
 
-# Initialize the analyzer with target column
-analyzer = EDAAnalyzer(
-    df, 
-    target_column='profit',
-    date_column='date'
-)
+print("\nRunning EDA analysis on financial data...\n")
+analyzer = EDAAnalyzer(df, target_column='Category', date_column='Last_Restocked')
+report = analyzer.run_full_analysis(output_path="financial_data_report.html", 
+                                  title="Financial Data Analysis Report",
+                                  show_progress=True)
 
-# Run the full analysis with all features
-analyzer.run_full_analysis(
-    output_path='financial_eda_report.html',
-    title='Financial Data Analysis Report',
-    include_multivariate=True,
-    include_feature_importance=True,
-    use_sampling=False,
-    show_progress=True
-)
+print("\nAnalysis complete. Report saved to financial_data_report.html")
 
-print("\nAnalysis complete! Report saved to 'financial_eda_report.html'")
-print("Open the HTML file in your browser to view the full report.")
-print("\nKey features of this example:")
-print("1. Successfully handles dollar signs in column names and values")
-print("2. Properly displays underscores in category names")
-print("3. Correctly processes percentage signs")
-print("4. Renders all visualizations without LaTeX errors")
-print("5. Generates a complete analysis without crashes")
+# Create a simple plot to demonstrate currency handling
+plt.figure(figsize=(10, 6))
+categories = df['Category'].unique()
+avg_prices = [df[df['Category'] == cat]['Price_Numeric'].mean() for cat in categories]
+
+plt.bar(categories, avg_prices)
+plt.title('Average Price by Category ($)')
+plt.xlabel('Product Category')
+plt.ylabel('Average Price ($)')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig('category_price_analysis.png')
+
+print("\nCategory price analysis chart saved to category_price_analysis.png")
+
+# Plot with dollar signs in the data labels
+plt.figure(figsize=(12, 8))
+plt.scatter(df['Price_Numeric'], df['Profit_Margin_Numeric'], alpha=0.7)
+
+# Add product labels with dollar signs for some points
+for i in range(0, 10, 2):
+    plt.annotate(f"${df['Price_Numeric'].iloc[i]:.2f}", 
+                 (df['Price_Numeric'].iloc[i], df['Profit_Margin_Numeric'].iloc[i]),
+                 xytext=(5, 5), textcoords='offset points')
+
+plt.title('Price vs. Profit Margin Analysis')
+plt.xlabel('Price ($)')
+plt.ylabel('Profit Margin ($)')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.savefig('price_profit_analysis.png')
+
+print("Price-profit analysis chart saved to price_profit_analysis.png")

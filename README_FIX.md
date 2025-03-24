@@ -1,62 +1,56 @@
-# DataTypeDetector Excel Date Conversion Fix
+# Freamon EDA Currency Symbol Fix
 
-This document explains the fix for the "overflow encountered with multiply" error when converting columns with Excel dates that have missing values.
+## Overview
+This document explains the fixes implemented in version 0.3.16 to address issues with the EDA module when handling data containing currency symbols and other special characters that matplotlib can misinterpret as LaTeX commands.
 
-## The Issue
+## The Problem
+Matplotlib, by default, interprets certain characters as LaTeX math mode delimiters:
+- `$` symbols trigger math mode
+- `_` characters are interpreted as subscripts
+- `^` characters are interpreted as superscripts
+- Other characters like `%`, `\`, `{`, `}` have special meaning
 
-When using the `DataTypeDetector` class to convert Excel dates (`unit='D', origin='1899-12-30'`), an overflow error could occur when the column contained a mix of:
+This causes errors when generating plots and HTML reports with data containing these symbols, especially financial data with currency symbols.
 
-- Valid Excel dates (numeric values)
-- Missing values (NaN)
-- Invalid values (strings, infinity, etc.)
+## The Solution
+Version 0.3.16 implements a comprehensive set of patches to make freamon robust when handling currency symbols and other special characters:
 
-The error message was: `Failed to convert column 'date': overflow encountered with multiply`
+1. **Matplotlib Text Rendering Patches**:
+   - Patches matplotlib's text rendering functions to safely handle special characters
+   - Preprocesses text to avoid LaTeX interpretation of currency symbols
+   - Adds error handling to gracefully recover from rendering failures
 
-## The Fix
+2. **EDA Module Error Handling**:
+   - Makes the `run_full_analysis` method more robust with proper exception handling
+   - Allows analysis to continue even if certain steps encounter errors
+   - Provides meaningful error messages instead of crashing
 
-The fix improves the conversion process by:
+3. **HTML Report Generation**:
+   - Adds fallback mechanism to generate minimal reports when errors occur
+   - Fixes accordion component functionality
+   - Ensures safe processing of all text displayed in reports
 
-1. First converting values to numeric, forcing non-numeric values to NaN
-2. Creating a mask for finite values to avoid overflow errors
-3. Processing each finite value individually to avoid issues with mixed types
-4. Handling errors for each individual value gracefully
-
-We now handle:
-- NaN values (converted to NaT)
-- Invalid string values (converted to NaT)
-- Valid Excel dates (converted to proper datetime)
-- Values outside the convertible range (handled with warnings)
-
-## Example Usage
+## Usage
+To use the fixed version with your code:
 
 ```python
-import pandas as pd
-import numpy as np
-from freamon.utils.datatype_detector import DataTypeDetector
+# Option 1: Import and use the comprehensive patches directly
+from freamon.utils.matplotlib_fixes import apply_comprehensive_matplotlib_patches, patch_freamon_eda
 
-# Create a DataFrame with Excel dates that contains missing values
-df = pd.DataFrame({
-    'date': [43831, 44196, np.nan, 44562, np.nan, 44927, 45292, np.nan],  # Some dates are missing
-    'value': [100, 105, np.nan, 110, np.nan, 115, 120, np.nan]
-})
+# Apply the patches before running any analysis
+apply_comprehensive_matplotlib_patches()
+patch_freamon_eda()
 
-# Detect and convert
-detector = DataTypeDetector(df)
-detector.detect_all_types()  # This will detect the Excel dates
-converted_df = detector.convert_types()
-
-# Result will have proper datetime objects with NaT for missing values
-print(converted_df)
+# Now run your analysis as usual
+from freamon.eda.analyzer import EDAAnalyzer
+analyzer = EDAAnalyzer(df, target_column='target')
+report = analyzer.run_full_analysis()
 ```
 
-## Technical Details
+See the example in `examples/eda_with_currency.py` for a complete demonstration.
 
-The main changes were made to the `convert_types` method in `datatype_detector.py`. We now handle Excel date conversion by:
-
-1. Converting column values to numeric with `pd.to_numeric(values, errors='coerce')`
-2. Creating a mask of finite values with `np.isfinite(numeric_values)`
-3. Initializing a result Series with NaT values
-4. Processing each finite value individually in a loop, handling exceptions for each
-5. Returning a properly converted datetime column
-
-This approach is more robust and handles mixed data types gracefully without overflows.
+## Benefits
+- No more crashes when working with financial data containing currency symbols
+- Improved error handling and recovery throughout the EDA process
+- More robust HTML report generation
+- Better visualization of text containing special characters
