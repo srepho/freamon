@@ -44,7 +44,24 @@ def generate_markdown_report(
     str
         The Markdown report as a string.
     """
-    from freamon.utils.matplotlib_fixes import optimize_base64_image
+    from freamon.utils.matplotlib_fixes import (
+        optimize_base64_image, 
+        safe_process_dataframe, 
+        _make_analysis_results_safe, 
+        configure_matplotlib_for_currency
+    )
+    
+    # Apply matplotlib fixes and process data automatically
+    configure_matplotlib_for_currency()
+    
+    # Process dataframe to safely handle special characters
+    df_safe = safe_process_dataframe(df)
+    
+    # Process analysis results to make sure all text is safe
+    analysis_results = _make_analysis_results_safe(analysis_results)
+    
+    # Use the processed dataframe
+    df = df_safe
     
     # Start building Markdown parts
     md_parts = []

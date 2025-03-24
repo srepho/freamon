@@ -10,6 +10,7 @@ import seaborn as sns
 
 from freamon.utils import check_dataframe_type, convert_dataframe
 from freamon.utils.datatype_detector import DataTypeDetector
+from freamon.utils.matplotlib_fixes import configure_matplotlib_for_currency, patch_freamon_eda
 from freamon.eda.univariate import (
     analyze_numeric,
     analyze_categorical,
@@ -96,6 +97,14 @@ class EDAAnalyzer:
             The number of rows to sample for analysis. If None and use_sampling is True,
             a suitable sample size is chosen based on the dataframe size.
         """
+        # Apply matplotlib fixes before any plotting
+        try:
+            configure_matplotlib_for_currency()
+            patch_freamon_eda()
+        except Exception as e:
+            import warnings
+            warnings.warn(f"Could not apply matplotlib fixes: {str(e)}")
+            
         self.dataframe_type = check_dataframe_type(df)
         self.custom_patterns = custom_patterns
         self.use_sampling = use_sampling

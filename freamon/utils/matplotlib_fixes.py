@@ -651,3 +651,6 @@ def optimize_base64_image(base64_str, max_size=800, quality=85):
 
 # Configure matplotlib when this module is imported
 configure_matplotlib_for_currency()
+
+# We'll leave patches to freamon EDA applied on-demand to avoid circular imports
+# The EDAAnalyzer will apply these patches during initialization
