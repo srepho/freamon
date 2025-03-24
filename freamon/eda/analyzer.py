@@ -529,7 +529,9 @@ class EDAAnalyzer:
         output_path: str,
         title: str = "Exploratory Data Analysis Report",
         theme: str = "cosmo",
-    ) -> None:
+        lazy_loading: bool = True,
+        include_export_button: bool = True,
+    ) -> str:
         """
         Generate an HTML report with the analysis results.
         
@@ -543,6 +545,17 @@ class EDAAnalyzer:
             The Bootstrap theme to use for the report.
             Options: 'cosmo', 'flatly', 'journal', 'lumen', 'sandstone',
             'simplex', 'spacelab', 'united', 'yeti'.
+        lazy_loading : bool, default=True
+            Whether to enable lazy loading for images, which can improve 
+            performance for reports with many visualizations.
+        include_export_button : bool, default=True
+            Whether to include a button that allows exporting the report 
+            as a Jupyter notebook.
+            
+        Returns
+        -------
+        str
+            The HTML report as a string.
         """
         # Make sure we have some results
         if not hasattr(self, 'analysis_results') or not self.analysis_results:
@@ -554,15 +567,17 @@ class EDAAnalyzer:
             self.analyze_basic_stats()
         
         # Generate the report
-        generate_html_report(
+        html_report = generate_html_report(
             df=self.df,
             analysis_results=self.analysis_results,
             output_path=output_path,
             title=title,
             theme=theme,
+            lazy_loading=lazy_loading,
+            include_export_button=include_export_button,
         )
         
-        print(f"Report saved to {output_path}")
+        return html_report
     
     def analyze_feature_importance(
         self,

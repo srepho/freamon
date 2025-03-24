@@ -19,7 +19,9 @@ def generate_html_report(
     output_path: str,
     title: str = "Exploratory Data Analysis Report",
     theme: str = "cosmo",
-) -> None:
+    lazy_loading: bool = False,
+    include_export_button: bool = True,
+) -> str:
     """
     Generate an HTML report with the EDA results.
     
@@ -35,6 +37,15 @@ def generate_html_report(
         The title of the report.
     theme : str, default="cosmo"
         The Bootstrap theme to use for the report.
+    lazy_loading : bool, default=False
+        Whether to enable lazy loading for images (improves performance for large reports).
+    include_export_button : bool, default=True
+        Whether to include a button to export the report as a Jupyter notebook.
+        
+    Returns
+    -------
+    str
+        The HTML report as a string.
     """
     # Validate theme
     valid_themes = [
@@ -333,9 +344,64 @@ def generate_html_report(
                                 <div class="table-responsive">
     """
     
-    # Convert the first 5 rows to HTML
-    sample_html = df.head().to_html(classes=["table", "table-striped", "table-hover"], index=True)
-    html += sample_html
+    # Calculate appropriate sample size based on dataframe size
+    if len(df) > 1000000:
+        sample_size = 10
+    elif len(df) > 100000:
+        sample_size = 20
+    elif len(df) > 10000:
+        sample_size = 30
+    else:
+        sample_size = 50
+        
+    # Show first and last rows with ellipsis in between for large datasets
+    if len(df) > sample_size:
+        half_size = sample_size // 2
+        
+        # Get first and last parts
+        first_part = df.head(half_size)
+        last_part = df.tail(half_size)
+        
+        # Generate HTML for first part
+        first_html = first_part.to_html(classes=["table", "table-striped", "table-hover"], 
+                                        index=True, header=True)
+        
+        # Generate HTML for last part but without header
+        last_html = last_part.to_html(classes=["table", "table-striped", "table-hover"], 
+                                      index=True, header=False)
+        
+        # Insert ellipsis row
+        row_count = len(df)
+        col_count = len(df.columns)
+        ellipsis_row = f"""
+        <tr>
+            <td colspan="{col_count + 1}" class="text-center">
+                <em>... {row_count - sample_size:,} more rows ...</em>
+            </td>
+        </tr>
+        """
+        
+        # Find where the </tbody> tag is in the first HTML
+        tbody_end_pos = first_html.find("</tbody>")
+        if tbody_end_pos != -1:
+            # Insert ellipsis row before the </tbody> tag
+            first_html = first_html[:tbody_end_pos] + ellipsis_row + first_html[tbody_end_pos:]
+        
+        # Find where the <tbody> tag is in the last HTML
+        tbody_start_pos = last_html.find("<tbody>")
+        if tbody_start_pos != -1:
+            # Replace everything before </tbody> with just the rows
+            tbody_end_pos = last_html.find("</tbody>")
+            rows_only = last_html[tbody_start_pos + 7:tbody_end_pos]
+            first_html = first_html[:first_html.find("</tbody>")] + rows_only + first_html[first_html.find("</tbody>"):]
+            html += first_html
+        else:
+            # Fallback to just showing the first part
+            html += first_html
+    else:
+        # For small datasets, show all rows
+        sample_html = df.to_html(classes=["table", "table-striped", "table-hover"], index=True)
+        html += sample_html
     
     html += """
                                 </div>
@@ -1502,8 +1568,165 @@ def generate_html_report(
     </html>
     """
     
+    # Add lazy loading for images if enabled
+    if lazy_loading:
+        html = html.replace('<img src="data:image/png;base64,', '<img loading="lazy" src="data:image/png;base64,')
+    
+    # Add export to Jupyter button if enabled
+    if include_export_button:
+        jupyter_export_script = f"""
+        <script>
+        function exportToJupyter() {{            
+            // Create the notebook content
+            const notebook = {{
+                cells: [
+                    {{
+                        cell_type: "markdown",
+                        metadata: {{}},
+                        source: ["# {title}\\n", "Generated with Freamon EDA\\n", "*This notebook was exported from the HTML report*"]
+                    }},
+                    {{
+                        cell_type: "markdown",
+                        metadata: {{}},
+                        source: ["## Import required libraries\\n"]
+                    }},
+                    {{
+                        cell_type: "code",
+                        metadata: {{}},
+                        source: [
+                            "import pandas as pd\\n",
+                            "import numpy as np\\n",
+                            "import matplotlib.pyplot as plt\\n",
+                            "import seaborn as sns\\n",
+                            "\\n",
+                            "# Apply patches to handle currency symbols and special characters in matplotlib\\n",
+                            "try:\\n",
+                            "    from freamon.utils.matplotlib_fixes import apply_comprehensive_matplotlib_patches\\n",
+                            "    apply_comprehensive_matplotlib_patches()\\n",
+                            "except ImportError:\\n",
+                            "    print('Freamon matplotlib fixes not available, rendering may have issues with special characters')\\n",
+                            "\\n",
+                            "# Configure plot styling\\n",
+                            "plt.style.use('seaborn-v0_8-whitegrid')\\n",
+                            "plt.rcParams['figure.figsize'] = [10, 6]\\n"
+                        ],
+                        execution_count: null,
+                        outputs: []
+                    }},
+                ],
+                metadata: {{
+                    kernelspec: {{
+                        display_name: "Python 3",
+                        language: "python",
+                        name: "python3"
+                    }}
+                }},
+                nbformat: 4,
+                nbformat_minor: 5
+            }};
+            
+            // Add data cell with sample data
+            const sampleDataCell = {{
+                cell_type: "code",
+                metadata: {{}},
+                source: [
+                    "# Sample of the analyzed dataset\\n",
+                    "df_sample = pd.DataFrame({{\\n" +
+                    {str(df.head(5).to_dict())}.replace("'", "\\"").replace("False", "false").replace("True", "true").replace("None", "null") + 
+                    "\\n}})\\n",
+                    "df_sample"
+                ],
+                execution_count: null,
+                outputs: []
+            }};
+            notebook.cells.push(sampleDataCell);
+            
+            // Add cells for visualizations from the HTML
+            const imgElements = document.querySelectorAll('img[src^="data:image/png;base64,"]');
+            let counter = 1;
+            
+            imgElements.forEach(img => {{                
+                // Extract section information to provide context for the visualization
+                let sectionTitle = "Visualization";
+                let parentCard = img.closest('.card');
+                if (parentCard) {{                    
+                    const cardHeader = parentCard.querySelector('.card-header');
+                    if (cardHeader) {{                        
+                        // Try to extract column name from heading
+                        const heading = cardHeader.textContent.trim();                        
+                        if (heading) {{                            
+                            sectionTitle = heading;                                
+                        }}
+                    }}
+                }}
+                
+                // Create markdown cell with section info                
+                const mdCell = {{                    
+                    cell_type: "markdown",
+                    metadata: {{}},
+                    source: [`## ${{sectionTitle}}\\n`]
+                }};
+                notebook.cells.push(mdCell);
+                
+                // Extract base64 content from the image
+                const src = img.getAttribute('src');
+                const base64Data = src.replace('data:image/png;base64,', '');
+                
+                // Create code cell for displaying the image
+                const codeCell = {{                    
+                    cell_type: "code",
+                    metadata: {{}},
+                    source: [
+                        "import base64\\n",
+                        "from IPython.display import Image, display\\n",
+                        "\\n",
+                        `# Display visualization ${{counter}}\\n`,
+                        `img_data = "${{base64Data}}"\\n`,
+                        "img_bytes = base64.b64decode(img_data)\\n",
+                        "display(Image(data=img_bytes))\\n"
+                    ],
+                    execution_count: null,
+                    outputs: []
+                }};
+                notebook.cells.push(codeCell);
+                counter++;
+            }});
+            
+            // Create a download link for the notebook
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(notebook));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "freamon_eda_report.ipynb");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }}
+        </script>
+        """
+        
+        # Add the button right after body open tag
+        body_open_pos = html.find('<body>')
+        if body_open_pos != -1:
+            body_open_pos += len('<body>')
+            export_button = f"""
+            <div class="container my-3">            
+                <button class="btn btn-outline-primary float-end" onclick="exportToJupyter()">            
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-journal-code" viewBox="0 0 16 16">                
+                        <path fill-rule="evenodd" d="M8.646 5.646a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 8 8.646 6.354a.5.5 0 0 1 0-.708zm-1.292 0a.5.5 0 0 0-.708 0l-2 2a.5.5 0 0 0 0 .708l2 2a.5.5 0 0 0 .708-.708L5.707 8l1.647-1.646a.5.5 0 0 0 0-.708z"/>                
+                        <path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3z"/>                
+                    </svg>            
+                    Export to Jupyter Notebook            
+                </button>            
+            </div>            
+            {jupyter_export_script}
+            """
+            html = html[:body_open_pos] + export_button + html[body_open_pos:]
+    
     # Write the HTML to a file
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
     
     print(f"Report saved to {output_path}")
+    
+    # Return the HTML string
+    return html

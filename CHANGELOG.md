@@ -1,5 +1,19 @@
 # Changelog
 
+## Version 0.3.17 - Enhanced EDA for Large Datasets & Jupyter Export
+- Added smart data table rendering showing first/last rows with row count indicators
+- Implemented lazy loading for images to improve HTML report performance
+- Added client-side export to Jupyter notebook functionality
+- Enhanced EDAAnalyzer.generate_report with new parameters:
+  - lazy_loading: Enable/disable lazy loading for images
+  - include_export_button: Add a button to export report as Jupyter notebook
+- Updated return type of generate_report to include the HTML string
+- Added comprehensive documentation for large dataset handling
+- Created new example scripts:
+  - large_dataset_eda_example.py: Demonstrates all optimizations
+  - jupyter_export_example.py: Shows Jupyter notebook export feature
+  - eda_performance_test.py: Benchmarks report generation performance
+
 ## Version 0.3.16 - EDA Reporting Robustness Fix
 - Fixed crashes in EDA reporting when data contains currency symbols
 - Enhanced matplotlib patches to handle problematic characters like $, _, ^, etc.

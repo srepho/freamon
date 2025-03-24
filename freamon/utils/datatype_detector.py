@@ -12,6 +12,44 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable, Itera
 import numpy as np
 import pandas as pd
 
+# Import matplotlib fixes to handle currency symbols properly
+try:
+    from freamon.utils.matplotlib_fixes import (
+        configure_matplotlib_for_currency, 
+        replace_dollar_signs,
+        safe_process_dataframe
+    )
+except ImportError:
+    # Define fallback functions if module not found
+    def configure_matplotlib_for_currency():
+        try:
+            import matplotlib.pyplot as plt
+            plt.rcParams['text.usetex'] = False
+            plt.rcParams['mathtext.default'] = 'regular'
+            return True
+        except:
+            return False
+            
+    def replace_dollar_signs(text):
+        if not isinstance(text, str):
+            return text
+        return text.replace('$', '[DOLLAR]')
+        
+    def safe_process_dataframe(df):
+        import pandas as pd
+        processed_df = df.copy()
+        
+        for col in processed_df.columns:
+            if pd.api.types.is_string_dtype(processed_df[col]) or pd.api.types.is_object_dtype(processed_df[col]):
+                processed_df[col] = processed_df[col].astype(str).apply(
+                    lambda x: replace_dollar_signs(x) if isinstance(x, str) else x
+                )
+        
+        return processed_df
+    
+    # Try to configure matplotlib
+    configure_matplotlib_for_currency()
+
 from freamon.utils.date_converters import convert_month_year_format, is_month_year_format
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -27,13 +65,14 @@ class DataTypeDetector:
     
     This class provides methods to detect logical data types beyond the
     basic storage types, including IDs, zip codes, phone numbers, addresses,
-    Excel dates, and distinguishing between categorical and continuous numeric features.
+    Excel dates, currency values, and distinguishing between categorical and continuous numeric features.
     
     The implementation includes performance optimizations for large datasets using:
     - Efficient sampling strategies
     - PyArrow integration for faster processing
     - Caching of intermediate results
     - Vectorized operations where possible
+    - Safe handling of currency symbols when displaying results
     
     Parameters
     ----------
@@ -1863,6 +1902,13 @@ class DataTypeDetector:
             
         # Create DataFrame
         report_df = pd.DataFrame(basic_data)
+        
+        # Process the DataFrame to safely handle currency symbols
+        # Replace dollar signs with [DOLLAR] to prevent matplotlib LaTeX parsing issues
+        try:
+            report_df = safe_process_dataframe(report_df)
+        except Exception as e:
+            logger.warning(f"Failed to process dollar signs in report: {e}")
         
         # Apply styling
         try:

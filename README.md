@@ -51,10 +51,10 @@ A package to make data science projects on tabular data easier. Named after the 
 
 ```bash
 # Basic installation
-pip install freamon==0.3.15
+pip install freamon==0.3.16
 
 # With all optional dependencies (no development tools)
-pip install freamon[all]==0.3.15
+pip install freamon[all]==0.3.16
 
 # With all dependencies including development tools
 pip install freamon[full]
@@ -505,6 +505,23 @@ metrics = trainer.train(
 print(f"Validation metrics: {metrics}")
 ```
 
+## Version 0.3.16 Highlights
+
+- **Enhanced EDA for Large Datasets:**
+  - Smart data table rendering showing first/last rows with row count indicators
+  - Lazy loading for images to improve performance with many visualizations
+  - Adaptive sampling based on dataset size
+  
+- **Export to Jupyter Notebook:**
+  - One-click export of EDA reports to Jupyter notebooks 
+  - Client-side conversion without additional dependencies
+  - Preserves all visualizations with code to reproduce them
+  
+- **Currency and Special Character Handling:**
+  - Comprehensive fixes for matplotlib rendering of currency symbols
+  - Improved LaTeX handling for special characters (_, $, ^, etc.)
+  - Simple API to apply all patches with a single function call
+
 ## Module Overview
 
 - **data_quality:** Tools for assessing and improving data quality
@@ -512,7 +529,9 @@ print(f"Validation metrics: {metrics}")
   - **outliers:** Outlier detection and handling
   - **missing_values:** Missing value analysis and imputation
 - **eda:** Exploratory data analysis tools
+  - **analyzer:** Comprehensive EDA with HTML reporting and Jupyter export
   - **time_series:** Enhanced time series analysis, seasonality, stationarity, and forecasting
+  - **report:** Interactive HTML reports with lazy loading for large datasets
 - **features:** Feature engineering utilities
   - **engineer:** Standard feature transformations
   - **shapiq_engineer:** Automatic feature interaction detection
@@ -560,6 +579,9 @@ The package includes several example scripts to demonstrate its functionality:
 - **mixed_date_formats_example.py** - Handling date columns with multiple formats
 - **scientific_notation_example.py** - Detecting and visualizing scientific notation data
 - **datatype_detector_example.py** - Optimized data type detection for large datasets
+- **large_dataset_eda_example.py** - Enhanced EDA reporting for large datasets with lazy loading
+- **jupyter_export_example.py** - Export EDA reports to Jupyter notebooks for interactive analysis
+- **eda_performance_test.py** - Performance benchmarks for EDA reporting optimization
 
 Run any example by navigating to the examples directory and executing:
 
