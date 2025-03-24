@@ -168,20 +168,21 @@ def preprocess_text_for_matplotlib(text):
     if not isinstance(text, str):
         return str(text)
     
-    # Replace dollar signs with [DOLLAR]
-    text = text.replace('$', '[DOLLAR]')
+    # Replace dollar signs with a visible representation
+    # Use plain text instead of Unicode for better font compatibility 
+    text = text.replace('$', '(USD)')
     
-    # Replace underscores with [UNDERSCORE] to prevent math subscript interpretation
-    text = text.replace('_', '[UNDERSCORE]')
+    # Replace underscores with visible representation
+    text = text.replace('_', '-')  # Simple dash instead of underscore
     
-    # Replace other troublesome characters
-    text = text.replace('^', '[CARET]')  # Superscript
-    text = text.replace('\\', '[BACKSLASH]')  # Escape character
-    text = text.replace('{', '[LBRACE]')  # LaTeX grouping
-    text = text.replace('}', '[RBRACE]')  # LaTeX grouping
+    # Replace other troublesome characters with plain text alternatives
+    text = text.replace('^', '(caret)')  # Text replacement for caret
+    text = text.replace('\\', '/')  # Forward slash instead of backslash
+    text = text.replace('{', '(')  # Simple parenthesis
+    text = text.replace('}', ')')  # Simple parenthesis
     
-    # Replace percentage signs with [PERCENT] to prevent formatting issues
-    text = text.replace('%', '[PERCENT]')
+    # Replace percentage signs with plain text
+    text = text.replace('%', ' percent')
     
     return text
 
@@ -202,7 +203,14 @@ def fix_matplotlib_placeholders(text):
     if not isinstance(text, str):
         return text
         
-    # Replace common placeholder markers
+    # Replace plain text replacements with their original characters
+    text = text.replace('-', '_')              # Dash back to underscore
+    text = text.replace(' percent', '%')       # Text back to percent sign
+    text = text.replace('(USD)', '$')          # Text back to dollar sign
+    text = text.replace('(caret)', '^')        # Text back to caret
+    text = text.replace('/', '\\')             # Forward slash back to backslash
+    
+    # Also handle old-style placeholder markers for backward compatibility
     text = text.replace('[UNDERSCORE]', '_')
     text = text.replace('[PERCENT]', '%')
     text = text.replace('[DOLLAR]', '$')
@@ -211,11 +219,20 @@ def fix_matplotlib_placeholders(text):
     text = text.replace('[LBRACE]', '{')
     text = text.replace('[RBRACE]', '}')
     
+    # Handle full-width Unicode characters for backward compatibility
+    text = text.replace('＿', '_')    # Full-width underscore to standard
+    text = text.replace('％', '%')    # Full-width percent to standard
+    text = text.replace('＄', '$')    # Full-width dollar to standard
+    text = text.replace('＾', '^')    # Full-width caret to standard
+    text = text.replace('＼', '\\')   # Full-width backslash to standard
+    text = text.replace('｛', '{')    # Full-width left brace to standard
+    text = text.replace('｝', '}')    # Full-width right brace to standard
+    
     return text
 
 def replace_dollar_signs(text):
     """
-    Replace dollar signs with [DOLLAR] to prevent matplotlib LaTeX parsing issues.
+    Replace dollar signs with a text representation to prevent matplotlib LaTeX parsing issues.
     
     Parameters
     ----------
@@ -225,11 +242,11 @@ def replace_dollar_signs(text):
     Returns
     -------
     str
-        Text with dollar signs replaced with [DOLLAR]
+        Text with dollar signs replaced with (USD)
     """
     if not isinstance(text, str):
         return text
-    return text.replace('$', '[DOLLAR]')
+    return text.replace('$', '(USD)')  # Replace with readable text marker
 
 def safe_process_dataframe(df, skip_column_names=True):
     """
