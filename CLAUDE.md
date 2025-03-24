@@ -38,3 +38,17 @@ pytest --cov=freamon
 - Submit PRs for code review before merging
 - Follow semantic versioning
 - Add doctests in docstrings for examples
+
+## Key Features
+
+### Deduplication Tracking
+- Use `IndexTracker` to maintain bidirectional mappings between original and current indices
+- Update mappings after any operation that changes dataset size
+- Map results back to original dataset with `create_full_result_df()`
+- Consider the `DeduplicationTracker` for advanced visualization and tracking
+
+### Markdown Reports
+- Generate reports using `generate_markdown_report()` or `EDAAnalyzer.generate_report(format="markdown")`
+- Convert to HTML with `convert_to_html=True` parameter
+- Use high-quality formatting and structured sections for readability
+- Keep file sizes small for version control compatibility
