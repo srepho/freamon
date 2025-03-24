@@ -1,5 +1,16 @@
 # Changelog
 
+## Version 0.3.16 - EDA Reporting Robustness Fix
+- Fixed crashes in EDA reporting when data contains currency symbols
+- Enhanced matplotlib patches to handle problematic characters like $, _, ^, etc.
+- Added robust error handling for mathtext parsing failures
+- Implemented fallback mechanisms for EDA analysis steps
+- Created minimal report generation for severe error cases
+- Made accordion components more robust in HTML reports
+- Added comprehensive text preprocessing for safe HTML report generation
+- Created utility function to easily apply patches (patch_freamon)
+- Added example script demonstrating usage with financial data containing currency values
+
 ## Version 0.3.15 - Text Processor Train/Test Split Support
 - Added fit/transform capability to TextProcessor for TF-IDF and bag-of-words features
 - Implemented vectorizer storage in TextProcessor instances
