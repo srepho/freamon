@@ -185,6 +185,34 @@ def preprocess_text_for_matplotlib(text):
     
     return text
 
+def fix_matplotlib_placeholders(text):
+    """
+    Replace matplotlib placeholder markers with their original characters.
+    
+    Parameters
+    ----------
+    text : str or any
+        Text that might contain matplotlib placeholders
+        
+    Returns
+    -------
+    str or original type
+        Text with placeholders replaced
+    """
+    if not isinstance(text, str):
+        return text
+        
+    # Replace common placeholder markers
+    text = text.replace('[UNDERSCORE]', '_')
+    text = text.replace('[PERCENT]', '%')
+    text = text.replace('[DOLLAR]', '$')
+    text = text.replace('[CARET]', '^')
+    text = text.replace('[BACKSLASH]', '\\')
+    text = text.replace('[LBRACE]', '{')
+    text = text.replace('[RBRACE]', '}')
+    
+    return text
+
 def replace_dollar_signs(text):
     """
     Replace dollar signs with [DOLLAR] to prevent matplotlib LaTeX parsing issues.
@@ -203,7 +231,7 @@ def replace_dollar_signs(text):
         return text
     return text.replace('$', '[DOLLAR]')
 
-def safe_process_dataframe(df):
+def safe_process_dataframe(df, skip_column_names=True):
     """
     Process a DataFrame to safely handle dollar signs in string columns.
     
@@ -211,6 +239,8 @@ def safe_process_dataframe(df):
     ----------
     df : pd.DataFrame
         DataFrame that may contain currency values
+    skip_column_names : bool, default=True
+        Whether to skip processing column names to avoid placeholder issues
         
     Returns
     -------

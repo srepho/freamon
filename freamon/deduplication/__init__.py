@@ -25,6 +25,11 @@ from freamon.deduplication.clustering import (
     cluster_texts_dbscan
 )
 
+from freamon.deduplication.lsh_deduplication import (
+    lsh_deduplication,
+    create_lsh_bands
+)
+
 __all__ = [
     # Exact deduplication
     'hash_deduplication',
@@ -43,5 +48,9 @@ __all__ = [
     
     # Clustering
     'cluster_texts_hierarchical',
-    'cluster_texts_dbscan'
+    'cluster_texts_dbscan',
+    
+    # LSH deduplication
+    'lsh_deduplication',
+    'create_lsh_bands'
 ]

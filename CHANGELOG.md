@@ -1,5 +1,17 @@
 # Changelog
 
+## Version 0.3.22 - DataType Detector Fix & LSH Deduplication
+- Fixed the DataTypeDetector showing placeholders like [UNDERSCORE] in column names 
+- Added functionality to properly convert matplotlib placeholders back to original characters
+- Added Locality-Sensitive Hashing (LSH) implementation for efficient text deduplication
+- Created LSH module for near-duplicate detection without comparing all pairs
+- Fixed percentage display in reports to properly show % symbols
+- Added utility function to cleanup matplotlib placeholder text 
+- Enhanced safe_process_dataframe to have option to skip column name processing
+- Added comprehensive test files to verify symbol display functionality
+
+## Version 0.3.21 - Add Markdown report generation
+
 ## Version 0.3.20 - Deduplication Tracking and Result Mapping
 - Added comprehensive index tracking functionality for deduplication operations
 - Created IndexTracker class for maintaining mappings between original and deduplicated data
