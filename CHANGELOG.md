@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 0.3.23 - Automatic Matplotlib Character Fixes
+- Automated special character handling in matplotlib visualizations 
+- Modified matplotlib_fixes.py to apply fixes automatically on import
+- Updated EDAAnalyzer to initialize fixes during instantiation
+- Enhanced report generators to process special characters automatically
+- Fixed circular import issues between modules
+- Added test script to demonstrate automatic character handling
+- Improved user experience by eliminating need for explicit fix function calls
+
 ## Version 0.3.22 - DataType Detector Fix & LSH Deduplication
 - Fixed the DataTypeDetector showing placeholders like [UNDERSCORE] in column names 
 - Added functionality to properly convert matplotlib placeholders back to original characters
