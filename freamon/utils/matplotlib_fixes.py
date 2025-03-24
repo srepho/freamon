@@ -5,6 +5,9 @@ import logging
 import functools
 import warnings
 import re
+import base64
+from io import BytesIO
+from PIL import Image
 
 def configure_matplotlib_for_currency():
     """
@@ -537,6 +540,61 @@ def _generate_minimal_report(df, analysis_results, title):
     """
     
     return html
+
+def optimize_base64_image(base64_str, max_size=800, quality=85):
+    """
+    Resize a base64 image if it's too large to reduce HTML report file size.
+    
+    Parameters
+    ----------
+    base64_str : str
+        The base64 encoded image string
+    max_size : int, default=800
+        The maximum dimension (width or height) in pixels
+    quality : int, default=85
+        The quality of the output image (1-100, higher is better quality but larger file)
+        
+    Returns
+    -------
+    str
+        Optimized base64 encoded image string
+    """
+    # Extract the base64 data
+    if ',' in base64_str:
+        header, data = base64_str.split(',', 1)
+    else:
+        header = "data:image/png;base64"
+        data = base64_str
+    
+    # Decode base64
+    binary_data = base64.b64decode(data)
+    
+    # Open image
+    img = Image.open(BytesIO(binary_data))
+    
+    # Check if resizing is needed
+    if max(img.size) > max_size:
+        # Calculate new dimensions
+        width, height = img.size
+        if width > height:
+            new_width = max_size
+            new_height = int(height * (max_size / width))
+        else:
+            new_height = max_size
+            new_width = int(width * (max_size / height))
+        
+        # Resize image
+        img = img.resize((new_width, new_height), Image.LANCZOS)
+    
+    # Save to buffer with compression
+    buffer = BytesIO()
+    img.save(buffer, format="PNG", optimize=True, quality=quality)
+    buffer.seek(0)
+    
+    # Encode to base64
+    new_data = base64.b64encode(buffer.read()).decode("utf-8")
+    
+    return f"{header},{new_data}" if ',' in base64_str else new_data
 
 # Configure matplotlib when this module is imported
 configure_matplotlib_for_currency()

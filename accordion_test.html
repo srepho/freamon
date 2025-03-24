@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Accordion Test</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.2.3/dist/cosmo/bootstrap.min.css">
+    <style>
+        body { padding-top: 20px; padding-bottom: 40px; }
+        .section { margin-bottom: 40px; }
+        .accordion-button:not(.collapsed) {
+            background-color: #e7f1ff;
+            color: #0c63e4;
+            box-shadow: inset 0 -1px 0 rgba(0,0,0,.125);
+        }
+        .accordion-button.collapsed {
+            background-color: #f8f9fa;
+        }
+        .accordion-item {
+            border: 1px solid rgba(0,0,0,.125);
+            margin-bottom: 5px;
+        }
+        .accordion-body {
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Accordion Test</h1>
+        
+        <div class="accordion" id="accordionExample">
+            <!-- Item 1 -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-1">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse-1" 
+                            aria-expanded="false" 
+                            aria-controls="collapse-1">
+                        Accordion Item #1
+                    </button>
+                </h2>
+                <div id="collapse-1" 
+                     class="accordion-collapse collapse" 
+                     aria-labelledby="heading-1">
+                    <div class="accordion-body">
+                        <p>This is the content for the first accordion item.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Item 2 -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-2">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse-2" 
+                            aria-expanded="false" 
+                            aria-controls="collapse-2">
+                        Accordion Item #2
+                    </button>
+                </h2>
+                <div id="collapse-2" 
+                     class="accordion-collapse collapse" 
+                     aria-labelledby="heading-2">
+                    <div class="accordion-body">
+                        <p>This is the content for the second accordion item.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Item 3 -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-3">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse-3" 
+                            aria-expanded="false" 
+                            aria-controls="collapse-3">
+                        Accordion Item #3
+                    </button>
+                </h2>
+                <div id="collapse-3" 
+                     class="accordion-collapse collapse" 
+                     aria-labelledby="heading-3">
+                    <div class="accordion-body">
+                        <p>This is the content for the third accordion item.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Simple initialization for Bootstrap components
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tooltips if any
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(function(tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            
+            // Properly handle accordion item clicks
+            document.querySelectorAll('.accordion-button').forEach(function(button) {
+                button.addEventListener('click', function(e) {
+                    // Prevent default to avoid any conflicts
+                    e.preventDefault();
+                    
+                    // Use Bootstrap's collapse API properly
+                    var targetId = this.getAttribute('data-bs-target');
+                    var targetCollapse = document.querySelector(targetId);
+                    
+                    if (targetCollapse) {
+                        var bsCollapse = bootstrap.Collapse.getInstance(targetCollapse);
+                        
+                        // If instance doesn't exist yet, create it
+                        if (!bsCollapse) {
+                            bsCollapse = new bootstrap.Collapse(targetCollapse, {
+                                toggle: false
+                            });
+                        }
+                        
+                        // Toggle the collapse
+                        if (targetCollapse.classList.contains('show')) {
+                            bsCollapse.hide();
+                        } else {
+                            bsCollapse.show();
+                        }
+                    }
+                });
+            });
+            
+            console.log('Accordion test initialized successfully with ' + document.querySelectorAll('.accordion-button').length + ' items');
+        });
+    </script>
+</body>
+</html>

@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 0.3.19 - EDA Reporting Enhancements
+- Fixed accordion functionality issues in HTML reports with improved JavaScript
+- Optimized image sizes in reports to significantly reduce file size
+- Refactored report generation code for better maintainability
+- Improved HTML structure for better Bootstrap 5 compatibility
+- Added proper error handling for analysis section failures
+- Enhanced ID sanitization for better HTML/JavaScript compatibility
+- Added detailed debugging output for easier troubleshooting
+
 ## Version 0.3.18 - Text Deduplication Module
 - Added comprehensive text deduplication functionality with dedicated modules
 - Implemented exact deduplication methods: hash-based and n-gram fingerprinting
