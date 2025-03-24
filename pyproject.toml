@@ -46,6 +46,10 @@ dev = [
     "ipykernel>=6.0.0",
 ]
 
+markdown_reports = [
+    "markdown>=3.4.0",
+]
+
 extended = [
     "polars>=0.19.0",
     "pyarrow>=12.0.0,<15.0.0",
@@ -92,11 +96,11 @@ topic_modeling = [
 ]
 
 all = [
-    "freamon[extended,word_embeddings,topic_modeling,performance]",
+    "freamon[extended,word_embeddings,topic_modeling,performance,markdown_reports]",
 ]
 
 full = [
-    "freamon[extended,dev,word_embeddings,topic_modeling,performance]",
+    "freamon[extended,dev,word_embeddings,topic_modeling,performance,markdown_reports]",
 ]
 
 [tool.pytest.ini_options]

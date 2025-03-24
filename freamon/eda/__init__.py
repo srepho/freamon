@@ -23,6 +23,7 @@ from freamon.eda.multivariate import (
     perform_tsne,
 )
 from freamon.eda.report import generate_html_report
+from freamon.eda.markdown_report import generate_markdown_report
 from freamon.eda.explainability_report import generate_interaction_report
 from freamon.utils.datatype_detector import (
     DataTypeDetector,
@@ -44,6 +45,7 @@ __all__ = [
     "perform_pca",
     "perform_tsne",
     "generate_html_report",
+    "generate_markdown_report",
     "generate_interaction_report",
     "DataTypeDetector",
     "detect_column_types",

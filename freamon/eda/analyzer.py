@@ -25,6 +25,7 @@ from freamon.eda.time_series import (
 )
 from freamon.eda.multivariate import analyze_multivariate
 from freamon.eda.report import generate_html_report
+from freamon.eda.markdown_report import generate_markdown_report
 
 
 class EDAAnalyzer:
@@ -528,34 +529,40 @@ class EDAAnalyzer:
         self,
         output_path: str,
         title: str = "Exploratory Data Analysis Report",
+        format: str = "html",
         theme: str = "cosmo",
         lazy_loading: bool = True,
         include_export_button: bool = True,
+        convert_to_html: bool = False,
     ) -> str:
         """
-        Generate an HTML report with the analysis results.
+        Generate a report with the analysis results.
         
         Parameters
         ----------
         output_path : str
-            The path to save the HTML report.
+            The path to save the report.
         title : str, default="Exploratory Data Analysis Report"
             The title of the report.
+        format : str, default="html"
+            The format of the report. Options: 'html', 'markdown'.
         theme : str, default="cosmo"
-            The Bootstrap theme to use for the report.
+            The Bootstrap theme to use for HTML reports.
             Options: 'cosmo', 'flatly', 'journal', 'lumen', 'sandstone',
             'simplex', 'spacelab', 'united', 'yeti'.
         lazy_loading : bool, default=True
-            Whether to enable lazy loading for images, which can improve 
+            Whether to enable lazy loading for images in HTML reports, which can improve 
             performance for reports with many visualizations.
         include_export_button : bool, default=True
             Whether to include a button that allows exporting the report 
-            as a Jupyter notebook.
+            as a Jupyter notebook (HTML reports only).
+        convert_to_html : bool, default=False
+            If format is 'markdown', whether to also generate an HTML version of the report.
             
         Returns
         -------
         str
-            The HTML report as a string.
+            The report as a string in the specified format.
         """
         # Make sure we have some results
         if not hasattr(self, 'analysis_results') or not self.analysis_results:
@@ -566,18 +573,28 @@ class EDAAnalyzer:
         if "basic_stats" not in self.analysis_results:
             self.analyze_basic_stats()
         
-        # Generate the report
-        html_report = generate_html_report(
-            df=self.df,
-            analysis_results=self.analysis_results,
-            output_path=output_path,
-            title=title,
-            theme=theme,
-            lazy_loading=lazy_loading,
-            include_export_button=include_export_button,
-        )
+        # Generate the report based on the format
+        if format.lower() == "markdown":
+            report = generate_markdown_report(
+                df=self.df,
+                analysis_results=self.analysis_results,
+                output_path=output_path,
+                title=title,
+                convert_to_html=convert_to_html,
+                include_export_button=include_export_button,
+            )
+        else:  # default to HTML
+            report = generate_html_report(
+                df=self.df,
+                analysis_results=self.analysis_results,
+                output_path=output_path,
+                title=title,
+                theme=theme,
+                lazy_loading=lazy_loading,
+                include_export_button=include_export_button,
+            )
         
-        return html_report
+        return report
     
     def analyze_feature_importance(
         self,
