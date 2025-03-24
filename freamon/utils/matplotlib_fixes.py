@@ -168,18 +168,21 @@ def preprocess_text_for_matplotlib(text):
     if not isinstance(text, str):
         return str(text)
     
+    # Handle escape sequences first to avoid double processing
+    text = text.replace('\\', '/')  # Forward slash instead of backslash
+    
     # Replace dollar signs with a visible representation
     # Use plain text instead of Unicode for better font compatibility 
     text = text.replace('$', '(USD)')
     
     # Replace underscores with visible representation
-    text = text.replace('_', '-')  # Simple dash instead of underscore
+    # Using a different character that's less likely to cause issues
+    text = text.replace('_', '\u2013')  # En dash (–) instead of underscore
     
     # Replace other troublesome characters with plain text alternatives
     text = text.replace('^', '(caret)')  # Text replacement for caret
-    text = text.replace('\\', '/')  # Forward slash instead of backslash
-    text = text.replace('{', '(')  # Simple parenthesis
-    text = text.replace('}', ')')  # Simple parenthesis
+    text = text.replace('{', '(lbrace)')  # Descriptive text for left brace
+    text = text.replace('}', '(rbrace)')  # Descriptive text for right brace
     
     # Replace percentage signs with plain text
     text = text.replace('%', ' percent')
@@ -204,10 +207,13 @@ def fix_matplotlib_placeholders(text):
         return text
         
     # Replace plain text replacements with their original characters
-    text = text.replace('-', '_')              # Dash back to underscore
+    text = text.replace('\u2013', '_')         # En dash back to underscore
+    text = text.replace('-', '_')              # Also convert regular dash back to underscore (for backward compatibility)
     text = text.replace(' percent', '%')       # Text back to percent sign
     text = text.replace('(USD)', '$')          # Text back to dollar sign
     text = text.replace('(caret)', '^')        # Text back to caret
+    text = text.replace('(lbrace)', '{')       # Text back to left brace
+    text = text.replace('(rbrace)', '}')       # Text back to right brace
     text = text.replace('/', '\\')             # Forward slash back to backslash
     
     # Also handle old-style placeholder markers for backward compatibility
