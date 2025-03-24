@@ -1,5 +1,15 @@
 # Changelog
 
+## Version 0.3.20 - Deduplication Tracking and Result Mapping
+- Added comprehensive index tracking functionality for deduplication operations
+- Created IndexTracker class for maintaining mappings between original and deduplicated data
+- Added DeduplicationTracker class with visualization capabilities and HTML reporting
+- Implemented IndexTrackingPipeline to preserve index mappings throughout the pipeline process
+- Created advanced examples demonstrating mapping ML results back to original data
+- Added documentation for deduplication tracking and integration with ML workflows
+- Created pipeline steps specific to deduplication operations
+- Made it easy to go from deduplication to another task and map results back
+
 ## Version 0.3.19 - EDA Reporting Enhancements
 - Fixed accordion functionality issues in HTML reports with improved JavaScript
 - Optimized image sizes in reports to significantly reduce file size
