@@ -1,166 +1,199 @@
 """
-Example demonstrating how to run topic modeling on a pandas DataFrame and
-add the dominant topic as a new column to the DataFrame.
+Example demonstrating the optimized topic modeling with DataFrame integration.
+
+This example shows how to use the enhanced topic modeling functionality on a DataFrame
+with configurable preprocessing, deduplication, and multiprocessing options.
 """
 import pandas as pd
 import numpy as np
+import time
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_20newsgroups
+import multiprocessing
 
-from freamon.utils.text_utils import TextProcessor
+# Import necessary components
+from freamon.utils.text_utils import TextProcessor, create_topic_model_optimized
 
-# Helper function to get dominant topic for each document
-def get_dominant_topic(doc_topic_df):
-    """
-    Identifies the dominant topic for each document based on highest probability.
-    
-    Parameters:
-    -----------
-    doc_topic_df : pandas.DataFrame
-        DataFrame containing document-topic distributions
-        
-    Returns:
-    --------
-    pandas.Series
-        Series containing the dominant topic (column name) for each document
-    """
-    # For each row, find the column with the highest value
-    return doc_topic_df.idxmax(axis=1)
-
+# Configure multiprocessing
 if __name__ == '__main__':
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass  # Method already set
+    multiprocessing.freeze_support()
+    
     print("=== DataFrame Topic Modeling Example ===")
     
-    # Create example DataFrame with text data
-    print("Loading example dataset...")
-    
-    # Option 1: Use 20 newsgroups dataset
-    categories = ['sci.med', 'sci.space', 'rec.autos', 'comp.graphics']
+    # Load 20 newsgroups dataset
+    print("Loading 20 newsgroups dataset...")
+    categories = ['sci.med', 'sci.space', 'rec.autos', 'rec.sport.hockey', 
+                  'talk.politics.guns', 'comp.graphics']
     newsgroups = fetch_20newsgroups(
         subset='train',
         categories=categories,
         remove=('headers', 'footers', 'quotes'),
         random_state=42
     )
-    
-    # Create DataFrame with text data and original category
+
+    # Create a DataFrame with the text data
     df = pd.DataFrame({
         'text': newsgroups.data,
-        'original_category': [newsgroups.target_names[target] for target in newsgroups.target]
+        'category': [newsgroups.target_names[target] for target in newsgroups.target]
     })
     
-    # Add document IDs for easier tracking
-    df['document_id'] = [f"doc_{i}" for i in range(len(df))]
+    # Add some duplicate texts to demonstrate deduplication
+    print("Adding some duplicate texts to demonstrate deduplication...")
+    duplicate_indices = np.random.choice(len(df), size=min(100, len(df) // 5), replace=False)
     
-    # For demonstration, use a subset
-    print(f"Using {len(df)} documents from 20 newsgroups dataset")
+    # Create additional rows with duplicated text (but potentially different categories)
+    duplicate_rows = []
+    for idx in duplicate_indices:
+        row = df.iloc[idx].copy()
+        # Sometimes add a small modification to test fuzzy matching
+        if np.random.random() < 0.3:
+            row['text'] = row['text'] + " " + np.random.choice(["", ".", "!", "?"])
+        duplicate_rows.append(row)
     
-    # Initialize the text processor with spaCy for better preprocessing
-    processor = TextProcessor(use_spacy=True)
+    # Add duplicates to the dataframe
+    duplicates_df = pd.DataFrame(duplicate_rows)
+    df = pd.concat([df, duplicates_df], ignore_index=True)
+    print(f"Dataset shape after adding duplicates: {df.shape}")
     
-    # Preprocess the text data
-    print("Preprocessing texts...")
+    # Configure preprocessing options
+    preprocessing_options = {
+        'enabled': True,  # Set to False to use raw texts without preprocessing
+        'use_lemmatization': True,
+        'remove_stopwords': True,
+        'remove_punctuation': True,
+        'min_token_length': 3,
+        'custom_stopwords': ['said', 'would', 'could', 'also'],  # Domain-specific stopwords
+        'batch_size': 500  # Customize batch size for your hardware
+    }
     
-    # Process in batches for better progress reporting
-    batch_size = 100
-    all_processed_texts = []
+    # Configure deduplication options
+    deduplication_options = {
+        'enabled': True,  # Set to False to keep duplicates
+        'method': 'exact',  # 'exact', 'fuzzy', or 'none'
+        'hash_method': 'hash',  # For exact: 'hash' or 'ngram'
+        'similarity_threshold': 0.85,  # For fuzzy: threshold for similarity
+        'similarity_method': 'cosine',  # For fuzzy: 'cosine', 'jaccard', 'levenshtein'
+        'keep': 'first'  # 'first' or 'last' duplicate to keep
+    }
     
-    for i in range(0, len(df), batch_size):
-        batch = df.iloc[i:min(i+batch_size, len(df))]
-        processed_batch = [
-            processor.preprocess_text(
-                text, 
-                remove_stopwords=True,
-                remove_punctuation=True,
-                lemmatize=True
-            ) for text in batch['text']
-        ]
-        all_processed_texts.extend(processed_batch)
-        
-        # Report progress
-        progress = min(100, (i + len(batch)) * 100 // len(df))
-        print(f"  Progress: {progress}%", end='\r')
-    
-    print("\nPreprocessing complete")
-    
-    # Create the topic model
-    print("\nCreating topic model...")
-    n_topics = 4  # Match the number of categories in our dataset
-    
-    # Run the topic model
-    topic_model = processor.create_topic_model(
-        texts=all_processed_texts,
-        n_topics=n_topics,
-        method='nmf',  # NMF is typically faster than LDA
-        max_features=1000,
-        max_df=0.7,
-        min_df=3,
-        ngram_range=(1, 2),
-        random_state=42
+    # Run the enhanced topic modeling
+    print("\nRunning enhanced topic modeling on DataFrame...")
+    result = create_topic_model_optimized(
+        df, 
+        text_column='text',
+        n_topics=6,
+        method='nmf',  # 'nmf' or 'lda'
+        preprocessing_options=preprocessing_options,
+        max_docs=500,  # Limit for this example; set to None for auto-sizing
+        deduplication_options=deduplication_options,
+        return_full_data=True,  # Get topics for all documents, not just the sample
+        return_original_mapping=True,  # Get mapping from deduplicated docs to originals
+        use_multiprocessing=True  # Enable multiprocessing for large datasets
     )
     
-    # Get document-topic distribution
-    print("Getting document-topic distributions...")
-    doc_topics = processor.get_document_topics(topic_model)
+    # Print processing information
+    info = result['processing_info']
+    print("\nProcessing Information:")
+    print(f"  Original documents: {info['original_doc_count']}")
+    print(f"  Duplicates removed: {info['duplicates_removed']}")
+    print(f"  Processed documents: {info['processed_doc_count']}")
+    if info['sampled']:
+        print(f"  Sample size used for modeling: {info['sample_size']}")
+    print(f"  Lemmatization used: {info['used_lemmatization']}")
+    print(f"  Preprocessing enabled: {info['preprocessing_enabled']}")
+    if 'preprocessing_time' in info:
+        print(f"  Preprocessing time: {info['preprocessing_time']:.2f} seconds")
+    if 'multiprocessing_enabled' in info:
+        print(f"  Multiprocessing: {info['multiprocessing_enabled']}")
     
-    # Set index to match the DataFrame
-    doc_topics.index = df.index
+    # Print deduplication mapping size
+    if 'deduplication_map' in result:
+        dedup_map = result['deduplication_map']
+        total_duplicates = sum(len(indices) - 1 for indices in dedup_map.values())
+        print(f"  Total duplicates mapped: {total_duplicates}")
+        # Show a sample of the deduplication mapping
+        sample_key = next(iter(dedup_map))
+        if len(dedup_map[sample_key]) > 1:
+            print(f"  Sample duplicate mapping: {sample_key} -> {dedup_map[sample_key]}")
     
-    # Get the dominant topic for each document
-    print("Identifying dominant topic for each document...")
-    df['dominant_topic'] = get_dominant_topic(doc_topics)
-    
-    # Add document-topic probabilities as columns to the DataFrame
-    print("Adding all topic probabilities to the DataFrame...")
-    for col in doc_topics.columns:
-        df[f"prob_{col}"] = doc_topics[col]
-    
-    # Print topics for reference
-    print("\nTopic model topics:")
-    for topic_idx, words in topic_model['topics']:
+    # Print topics
+    print("\nTop 10 words for each topic:")
+    for topic_idx, words in result['topics']:
         print(f"Topic {topic_idx + 1}: {', '.join(words[:10])}")
     
-    # Print sample of the augmented DataFrame
-    print("\nDataFrame with topic information (first 5 rows):")
-    print(df[['document_id', 'original_category', 'dominant_topic']].head(5))
+    # Get document-topic distributions
+    doc_topics_df = result['document_topics']
     
-    # Visualization: Compare original categories to assigned topics
-    print("\nCreating category-topic distribution visualization...")
-    category_topic_counts = df.groupby(['original_category', 'dominant_topic']).size().unstack(fill_value=0)
+    # Add dominant topic for each document
+    print("\nAdding dominant topic to each document...")
+    topic_cols = [col for col in doc_topics_df.columns if col.startswith('Topic')]
     
-    # Convert to percentages
-    category_percentages = category_topic_counts.div(category_topic_counts.sum(axis=1), axis=0) * 100
+    # Function to get dominant topic
+    def get_dominant_topic(row):
+        max_topic = row[topic_cols].idxmax()
+        max_prob = row[max_topic]
+        return int(max_topic.split()[1]), max_prob
     
-    # Plot
-    fig, ax = plt.subplots(figsize=(12, 8))
-    category_percentages.plot(kind='bar', stacked=True, ax=ax, colormap='viridis')
-    plt.title('Distribution of Topics by Original Category')
-    plt.xlabel('Original Category')
-    plt.ylabel('Percentage of Documents')
-    plt.legend(title='Assigned Topic')
+    # Apply to get dominant topics and probabilities
+    dominant_topics = pd.DataFrame(
+        doc_topics_df.apply(get_dominant_topic, axis=1).tolist(),
+        index=doc_topics_df.index,
+        columns=['dominant_topic', 'topic_probability']
+    )
+    
+    # Add to original DataFrame
+    enhanced_df = df.copy()
+    enhanced_df['dominant_topic'] = dominant_topics['dominant_topic'].reindex(df.index)
+    enhanced_df['topic_probability'] = dominant_topics['topic_probability'].reindex(df.index)
+    
+    # Show sample of enhanced DataFrame
+    print("\nSample of enhanced DataFrame with dominant topics:")
+    print(enhanced_df[['category', 'dominant_topic', 'topic_probability']].sample(5))
+    
+    # Calculate topic distribution by category
+    print("\nTopic distribution by category:")
+    topic_by_category = pd.crosstab(
+        enhanced_df['category'], 
+        enhanced_df['dominant_topic'],
+        normalize='index'
+    )
+    print(topic_by_category)
+    
+    # Visualize topic distribution by category
+    plt.figure(figsize=(12, 8))
+    topic_by_category.plot(
+        kind='bar', 
+        stacked=True,
+        colormap='viridis',
+        figsize=(12, 6)
+    )
+    plt.title('Topic Distribution by Category')
+    plt.xlabel('Category')
+    plt.ylabel('Proportion')
+    plt.legend(title='Topic')
     plt.tight_layout()
+    plt.savefig('topic_distribution_by_category.png')
+    print("Saved topic distribution visualization to topic_distribution_by_category.png")
     
-    # Save the figure
-    plt.savefig('dataframe_topic_distribution.png')
-    print("Visualization saved to dataframe_topic_distribution.png")
+    # Visualize topics with probabilities
+    print("\nGenerating topic probability distribution...")
     
-    # Advanced usage: Save topic model for later use
-    print("\nSaving topic model information to CSV files...")
+    # Plot histogram of topic probabilities
+    plt.figure(figsize=(10, 6))
+    enhanced_df['topic_probability'].hist(bins=20)
+    plt.title('Distribution of Topic Probabilities')
+    plt.xlabel('Probability')
+    plt.ylabel('Count')
+    plt.tight_layout()
+    plt.savefig('topic_probability_distribution.png')
+    print("Saved topic probability distribution to topic_probability_distribution.png")
     
-    # Save the document-topic distribution
-    doc_topics.to_csv('document_topic_distribution.csv')
+    # Save enhanced DataFrame to CSV for later use
+    enhanced_df.to_csv('topics_enhanced_dataset.csv', index=False)
+    print("Saved enhanced dataset to topics_enhanced_dataset.csv")
     
-    # Save the topics as a DataFrame
-    topics_df = pd.DataFrame({
-        'topic_id': [f"Topic {idx+1}" for idx, _ in topic_model['topics']],
-        'top_words': [', '.join(words[:15]) for _, words in topic_model['topics']]
-    })
-    topics_df.to_csv('topic_keywords.csv', index=False)
-    
-    # Save the augmented DataFrame
-    df.to_csv('documents_with_topics.csv', index=False)
-    
-    print("\nExample complete! Files saved:")
-    print("- document_topic_distribution.csv: Topic probabilities for each document")
-    print("- topic_keywords.csv: Top words for each topic")
-    print("- documents_with_topics.csv: Original DataFrame with topic information")
-    print("- dataframe_topic_distribution.png: Visualization of topic distribution by category")
+    print("\nExample complete!")

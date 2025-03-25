@@ -7,11 +7,13 @@ Freamon is a comprehensive Python toolkit for exploratory data analysis, feature
 - **Exploratory Data Analysis**: Automatic EDA with comprehensive reporting in HTML, Markdown, and Jupyter notebooks
 - **Feature Engineering**: Advanced feature engineering for numeric, categorical, and text data
 - **Deduplication**: Multiple deduplication methods with index tracking to map results back to original data
+- **Topic Modeling**: Optimized text analysis with NMF and LDA, supporting large datasets up to 100K documents
 - **Modeling**: Custom model implementations with feature importance and model interpretation
 - **Pipeline**: Scikit-learn compatible pipeline with additional features
 - **Drift Analysis**: Tools for detecting and analyzing data drift
 - **Word Embeddings**: Integration with various word embedding techniques
 - **Visualization**: Publication-quality visualizations with proper handling of all special characters
+- **Performance Optimization**: Multiprocessing support and intelligent sampling for large dataset analysis
 
 ## Installation
 
