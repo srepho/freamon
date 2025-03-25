@@ -20,7 +20,7 @@ from freamon.model_selection.cross_validation import (
 )
 
 
-class CrossValidatedTrainer:
+class CrossValidationTrainer:
     """
     A trainer that uses cross-validation as the standard mechanism for model training.
     
@@ -135,7 +135,7 @@ class CrossValidatedTrainer:
         X: Union[pd.DataFrame, np.ndarray], 
         y: Union[pd.Series, np.ndarray], 
         **kwargs
-    ) -> "CrossValidatedTrainer":
+    ) -> "CrossValidationTrainer":
         """
         Fit the model using cross-validation.
         

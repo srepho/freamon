@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from freamon.pipeline.steps import PipelineStep
-from freamon.model_selection.cv_trainer import CrossValidatedTrainer
+from freamon.model_selection.cv_trainer import CrossValidationTrainer
 
 
 class CrossValidationTrainingStep(PipelineStep):
@@ -26,7 +26,7 @@ class CrossValidationTrainingStep(PipelineStep):
         The type of model to train
     problem_type : str
         The type of problem
-    cv_trainer : CrossValidatedTrainer
+    cv_trainer : CrossValidationTrainer
         The underlying cross-validated trainer
     eval_metric : Optional[str]
         The evaluation metric

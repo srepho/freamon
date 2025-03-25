@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 0.3.31 (2025-03-25)
+
+### Fixed
+- Renamed `CrossValidatedTrainer` class to `CrossValidationTrainer` in cv_trainer.py to match import in AutoModelFlow
+- Fixed import errors in model selection module
+- Added tests to verify correct imports and functionality
+
 ## Version 0.3.30 (2025-03-25)
 
 ### Fixed
