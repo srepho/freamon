@@ -9,6 +9,134 @@ import pandas as pd
 from freamon.modeling.metrics import calculate_metrics
 
 
+def create_time_series_cv(dates, n_splits=5, test_size=None, gap=0):
+    """Create a time series cross-validation splitter.
+    
+    This function creates a cross-validation splitter appropriate for time series data,
+    which respects the temporal order of observations and avoids data leakage.
+    
+    Parameters
+    ----------
+    dates : pd.Series
+        Series of dates to use for creating the time series splits.
+    n_splits : int, default=5
+        Number of splits (folds) to create.
+    test_size : Optional[Union[int, float, str]], default=None
+        Size of the test set for each fold. If None, uses approximately equal-sized splits.
+        Can be specified as:
+        - int: Number of samples in each test set
+        - float: Proportion of samples in each test set
+        - str: Time duration (e.g., '30D', '1M', '1Y')
+    gap : Union[int, pd.Timedelta], default=0
+        Gap between train and test sets to avoid leakage.
+        
+    Returns
+    -------
+    TimeSeriesSplit
+        A scikit-learn compatible time series cross-validation splitter.
+    
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> dates = pd.date_range(start='2020-01-01', periods=100)
+    >>> cv = create_time_series_cv(dates, n_splits=3, gap='7D')
+    >>> for train_idx, test_idx in cv.split(range(100)):
+    ...     print(f"Train: {train_idx[0]}-{train_idx[-1]}, Test: {test_idx[0]}-{test_idx[-1]}")
+    """
+    try:
+        from sklearn.model_selection import TimeSeriesSplit
+    except ImportError:
+        raise ImportError(
+            "scikit-learn is not installed. "
+            "Install it with 'pip install scikit-learn'."
+        )
+    
+    # If test_size is a string (time period), convert to appropriate number of samples
+    if isinstance(test_size, str):
+        # Convert to timedelta
+        delta = pd.Timedelta(test_size)
+        # Calculate the typical number of samples in this time period
+        date_range = pd.Series(dates).max() - pd.Series(dates).min()
+        test_size = int((delta / date_range) * len(dates))
+    
+    # Create the CV splitter
+    return TimeSeriesSplit(n_splits=n_splits, test_size=test_size, gap=gap)
+
+
+def create_stratified_cv(y, n_splits=5, random_state=None):
+    """Create a stratified cross-validation splitter.
+    
+    This function creates a cross-validation splitter that preserves the 
+    percentage of samples for each class in each fold.
+    
+    Parameters
+    ----------
+    y : array-like
+        Target values to stratify by.
+    n_splits : int, default=5
+        Number of splits (folds) to create.
+    random_state : Optional[int], default=None
+        Random seed for reproducibility.
+        
+    Returns
+    -------
+    StratifiedKFold
+        A scikit-learn stratified cross-validation splitter.
+    
+    Examples
+    --------
+    >>> import numpy as np
+    >>> y = np.array([0, 1, 0, 1, 0, 1, 0, 1, 0, 1])
+    >>> cv = create_stratified_cv(y, n_splits=2, random_state=42)
+    >>> for train_idx, test_idx in cv.split(range(10), y):
+    ...     print(f"Train: {train_idx}, Test: {test_idx}")
+    """
+    try:
+        from sklearn.model_selection import StratifiedKFold
+    except ImportError:
+        raise ImportError(
+            "scikit-learn is not installed. "
+            "Install it with 'pip install scikit-learn'."
+        )
+    
+    return StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+
+def create_kfold_cv(n_splits=5, random_state=None):
+    """Create a k-fold cross-validation splitter.
+    
+    This function creates a standard k-fold cross-validation splitter,
+    appropriate for regression problems or when stratification is not needed.
+    
+    Parameters
+    ----------
+    n_splits : int, default=5
+        Number of splits (folds) to create.
+    random_state : Optional[int], default=None
+        Random seed for reproducibility.
+        
+    Returns
+    -------
+    KFold
+        A scikit-learn KFold cross-validation splitter.
+    
+    Examples
+    --------
+    >>> cv = create_kfold_cv(n_splits=3, random_state=42)
+    >>> for train_idx, test_idx in cv.split(range(9)):
+    ...     print(f"Train: {train_idx}, Test: {test_idx}")
+    """
+    try:
+        from sklearn.model_selection import KFold
+    except ImportError:
+        raise ImportError(
+            "scikit-learn is not installed. "
+            "Install it with 'pip install scikit-learn'."
+        )
+    
+    return KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+
 def cross_validate(
     df: pd.DataFrame,
     target_column: str,
