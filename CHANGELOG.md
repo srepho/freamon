@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 0.3.30 (2025-03-25)
+
+### Fixed
+- Added missing `create_time_series_cv` function to cross_validation module
+- Added missing `create_stratified_cv` and `create_kfold_cv` helper functions
+- Fixed import error in AutoModelFlow when using time series cross-validation
+
 ## Version 0.3.29 (2025-03-25)
 
 ### Added
