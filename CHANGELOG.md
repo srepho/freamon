@@ -1,5 +1,19 @@
 # Changelog
 
+## Version 0.3.28 (2025-03-25)
+
+### Added
+- Added anonymization support to optimized topic modeling
+- Integrated with Allyanonimiser package for PII detection and anonymization
+- Added graceful fallback when anonymization libraries aren't available
+- Created new example script demonstrating topic modeling with anonymization
+- Added comprehensive documentation on anonymization configuration options
+
+### Improved
+- Enhanced topic modeling workflow with privacy-preserving features
+- Better handling of personally identifiable information in text data
+- Optimized anonymization process with batch processing
+
 ## Version 0.3.27 (2025-03-25)
 
 ### Added
