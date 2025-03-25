@@ -182,6 +182,29 @@ def time_operation(operation_name, func, *args, **kwargs):
     print(f"Completed: {operation_name} in {elapsed:.2f} seconds")
     return result
 
+# Define preprocessor function outside the main function to make it picklable
+def preprocess_batch(batch_texts, processor, preproc_opts):
+    """Process a batch of texts using specified preprocessing options.
+    
+    Args:
+        batch_texts: List of texts to preprocess
+        processor: TextProcessor instance
+        preproc_opts: Dictionary of preprocessing options
+        
+    Returns:
+        List of preprocessed texts
+    """
+    return [
+        processor.preprocess_text(
+            text, 
+            remove_stopwords=preproc_opts['remove_stopwords'], 
+            remove_punctuation=preproc_opts['remove_punctuation'],
+            lemmatize=preproc_opts['use_lemmatization'],
+            min_token_length=preproc_opts['min_token_length'],
+            custom_stopwords=preproc_opts['custom_stopwords']
+        ) for text in batch_texts
+    ]
+
 
 class TextProcessor:
     """
@@ -496,6 +519,210 @@ class TextProcessor:
         df = pd.DataFrame(doc_topic_matrix, columns=columns)
         
         return df
+    
+    def create_text_features(self, df, text_column, include_stats=True, 
+                          include_readability=True, include_sentiment=True, prefix=""):
+        """Create text-based features including statistics, readability metrics, and sentiment scores.
+        
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            DataFrame containing the text column
+        text_column : str
+            Name of the column containing text
+        include_stats : bool, default=True
+            Whether to include basic text statistics (length, word count, etc.)
+        include_readability : bool, default=True
+            Whether to include readability metrics
+        include_sentiment : bool, default=True
+            Whether to include sentiment analysis scores
+        prefix : str, default=""
+            Prefix to add to feature names
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            DataFrame with extracted text features
+        """
+        # Create empty result dataframe
+        result = pd.DataFrame(index=df.index)
+        
+        # Basic text statistics
+        if include_stats:
+            # Character count
+            result[f"{prefix}char_count"] = df[text_column].fillna("").str.len()
+            
+            # Word count
+            result[f"{prefix}word_count"] = df[text_column].fillna("").str.split().str.len()
+            
+            # Average word length
+            result[f"{prefix}avg_word_length"] = df[text_column].fillna("").apply(
+                lambda x: np.mean([len(w) for w in str(x).split()]) if x and not pd.isna(x) else 0)
+            
+            # Number of uppercase words
+            result[f"{prefix}uppercase_count"] = df[text_column].fillna("").apply(
+                lambda x: sum(1 for w in str(x).split() if w.isupper()))
+            
+            # Number of unique words
+            result[f"{prefix}unique_words"] = df[text_column].fillna("").apply(
+                lambda x: len(set(str(x).lower().split())))
+        
+        # Readability metrics (simplified implementations)
+        if include_readability:
+            # Simple implementation of Flesch-Kincaid Grade Level
+            result[f"{prefix}fk_grade"] = df[text_column].fillna("").apply(self._calculate_fk_grade)
+        
+        # Sentiment analysis
+        if include_sentiment:
+            # Simple sentiment scores based on positive/negative word counts
+            sentiment_scores = df[text_column].fillna("").apply(self._calculate_sentiment)
+            result[f"{prefix}sentiment"] = sentiment_scores
+        
+        return result
+    
+    def _calculate_fk_grade(self, text):
+        """Simple implementation of Flesch-Kincaid Grade Level."""
+        if not text or pd.isna(text):
+            return 0
+        
+        # Count sentences (approximation)
+        sentences = text.count('.') + text.count('!') + text.count('?')
+        sentences = max(1, sentences)  # Ensure at least 1 sentence
+        
+        # Count words
+        words = len(text.split())
+        words = max(1, words)  # Ensure at least 1 word
+        
+        # Count syllables (simplified approximation)
+        syllables = sum(self._count_syllables(word) for word in text.split())
+        
+        # Calculate Flesch-Kincaid Grade Level
+        fk_grade = 0.39 * (words / sentences) + 11.8 * (syllables / words) - 15.59
+        return max(0, min(18, fk_grade))  # Clip to reasonable range
+    
+    def _count_syllables(self, word):
+        """Estimate syllable count in a word (simplified)."""
+        word = word.lower()
+        count = 0
+        vowels = "aeiouy"
+        
+        # Handle empty word
+        if not word:
+            return 0
+        
+        # Count vowel groups
+        if word[0] in vowels:
+            count += 1
+        for i in range(1, len(word)):
+            if word[i] in vowels and word[i-1] not in vowels:
+                count += 1
+                
+        # Handle common endings
+        if word.endswith('e'):
+            count -= 1
+            
+        # Ensure minimum count
+        if count == 0:
+            count = 1
+            
+        return count
+    
+    def _calculate_sentiment(self, text):
+        """Calculate simple sentiment score based on positive/negative words."""
+        if not text or pd.isna(text):
+            return 0
+        
+        # Simple list of positive and negative words
+        positive_words = {'good', 'great', 'excellent', 'positive', 'best', 'amazing',
+                         'wonderful', 'fantastic', 'beautiful', 'happy', 'love', 'joy',
+                         'success', 'successful', 'win', 'winning', 'perfect', 'brilliant'}
+        
+        negative_words = {'bad', 'terrible', 'awful', 'negative', 'worst', 'horrible',
+                         'poor', 'sad', 'hate', 'fail', 'failure', 'lose', 'losing',
+                         'difficult', 'wrong', 'problem', 'trouble', 'angry', 'upset'}
+        
+        # Tokenize and count matches
+        text_lower = text.lower()
+        words = text_lower.split()
+        
+        positive_count = sum(1 for word in words if word in positive_words)
+        negative_count = sum(1 for word in words if word in negative_words)
+        
+        # Calculate sentiment score (range: -1 to 1)
+        total = positive_count + negative_count
+        if total == 0:
+            return 0
+        
+        return (positive_count - negative_count) / total
+    
+    def extract_keywords_rake(self, text, max_keywords=10):
+        """Extract keywords using a simplified RAKE algorithm.
+        
+        Parameters:
+        -----------
+        text : str
+            Text to extract keywords from
+        max_keywords : int, default=10
+            Maximum number of keywords to return
+            
+        Returns:
+        --------
+        list of tuples
+            List of (keyword, score) tuples
+        """
+        if not text or pd.isna(text):
+            return []
+        
+        # Simplified stopwords list
+        stopwords = {'a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
+                    'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'like',
+                    'from', 'of', 'that', 'this', 'these', 'those', 'it', 'its', 'it\'s',
+                    'he', 'she', 'they', 'them', 'their', 'have', 'has', 'had',
+                    'do', 'does', 'did', 'can', 'could', 'will', 'would', 'should'}
+        
+        # Clean text
+        text = re.sub(r'[^\w\s]', ' ', text.lower())
+        
+        # Split into phrases based on stopwords and punctuation
+        words = text.split()
+        phrases = []
+        current_phrase = []
+        
+        for word in words:
+            if word in stopwords or not word:
+                if current_phrase:
+                    phrases.append(' '.join(current_phrase))
+                    current_phrase = []
+            else:
+                current_phrase.append(word)
+                
+        # Add final phrase
+        if current_phrase:
+            phrases.append(' '.join(current_phrase))
+        
+        # Calculate scores
+        word_scores = {}
+        phrase_scores = {}
+        
+        # Count word frequencies
+        for phrase in phrases:
+            words = phrase.split()
+            for word in words:
+                if word not in word_scores:
+                    word_scores[word] = 0
+                word_scores[word] += 1
+        
+        # Score phrases
+        for phrase in phrases:
+            words = phrase.split()
+            if not words:
+                continue
+            
+            score = sum(word_scores.get(word, 0) for word in words) / len(words)
+            phrase_scores[phrase] = score
+        
+        # Sort and return top keywords
+        return sorted(phrase_scores.items(), key=lambda x: x[1], reverse=True)[:max_keywords]
     
     def plot_topics(self, topic_model, figsize=(12, 8), top_n=10, return_html=False):
         """
@@ -1023,30 +1250,20 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
         # Process in batches for better progress reporting
         cleaned_texts = []
         
-        # Define preprocessing function for multiprocessing
-        def preprocess_batch(batch_texts):
-            return [
-                processor.preprocess_text(
-                    text, 
-                    remove_stopwords=preproc_opts['remove_stopwords'], 
-                    remove_punctuation=preproc_opts['remove_punctuation'],
-                    lemmatize=preproc_opts['use_lemmatization'],
-                    min_token_length=preproc_opts['min_token_length'],
-                    custom_stopwords=preproc_opts['custom_stopwords']
-                ) for text in batch_texts
-            ]
-        
         # Use multiprocessing for large datasets if enabled
         if multiprocessing_enabled and len(sample_df) > 10000:
             # Split texts into chunks for parallel processing
             texts = sample_df[text_column].fillna("").tolist()
             chunks = [texts[i:i+batch_size] for i in range(0, len(texts), batch_size)]
             
+            # Create a list of arguments for the preprocess_batch function
+            preprocess_args = [(chunk, processor, preproc_opts) for chunk in chunks]
+            
             # Process chunks in parallel
             print(f"Using {num_workers} workers for parallel preprocessing...")
             with multiprocessing.Pool(processes=num_workers) as pool:
                 results = []
-                for i, result in enumerate(pool.imap(preprocess_batch, chunks)):
+                for i, result in enumerate(pool.starmap(preprocess_batch, preprocess_args)):
                     results.append(result)
                     # Report progress
                     progress = min(100, (i + 1) * 100 // len(chunks))
@@ -1061,7 +1278,7 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
                 batch_texts = batch[text_column].fillna("").tolist()
                 
                 # Process batch
-                processed_batch = preprocess_batch(batch_texts)
+                processed_batch = preprocess_batch(batch_texts, processor, preproc_opts)
                 cleaned_texts.extend(processed_batch)
                 
                 # Report progress

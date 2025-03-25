@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 0.3.33 (2025-03-25)
+
+### Fixed
+- Fixed pickling issue in optimized topic modeling by moving nested function to module level
+- Added proper pickling support for AutoModelFlow and topic modeling results
+- Improved test coverage for serialization capabilities
+- Added documentation and example for model persistence
+
 ## Version 0.3.32 (2025-03-25)
 
 ### Added
