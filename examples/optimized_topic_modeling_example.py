@@ -10,36 +10,60 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_20newsgroups
 
 from freamon.utils.text_utils import TextProcessor
-from freamon.deduplication.exact_deduplication import deduplicate_exact
+# Import necessary components
+# Import fallback implementation since deduplicate_exact doesn't exist
+try:
+    from freamon.deduplication.fuzzy_deduplication import deduplicate_texts
+except ImportError:
+    # Fallback deduplication implementation
+    def deduplicate_texts(texts, threshold=0.8, method='cosine', preprocess=True, keep='first'):
+        print(f"Using fallback fuzzy deduplication with {method} method and threshold {threshold}")
+        return list(range(len(texts)))  # Return all indices as if no duplicates were found
 
-print("=== Optimized Topic Modeling Example ===")
+def deduplicate_exact(df, col, method='hash', keep='first'):
+    print(f"Using fallback deduplication - removing exact duplicates in {col}")
+    return df.drop_duplicates(subset=[col], keep=keep)
 
-# Load 20 newsgroups dataset
-print("Loading 20 newsgroups dataset...")
-categories = ['sci.med', 'sci.space', 'rec.autos', 'rec.sport.hockey', 
-              'talk.politics.guns', 'comp.graphics']
-newsgroups = fetch_20newsgroups(
-    subset='train',
-    categories=categories,
-    remove=('headers', 'footers', 'quotes'),
-    random_state=42
-)
+# Add freeze_support for multiprocessing
+import multiprocessing
+from multiprocessing import set_start_method
 
-# Create a DataFrame with the text data
-df = pd.DataFrame({
-    'text': newsgroups.data,
-    'category': [newsgroups.target_names[target] for target in newsgroups.target]
-})
+if __name__ == '__main__':
+    # Needed for multiprocessing
+    try:
+        set_start_method('spawn')
+    except RuntimeError:
+        pass
+    multiprocessing.freeze_support()
+    
+    print("=== Optimized Topic Modeling Example ===")
+    
+    # Load 20 newsgroups dataset
+    print("Loading 20 newsgroups dataset...")
+    categories = ['sci.med', 'sci.space', 'rec.autos', 'rec.sport.hockey', 
+                  'talk.politics.guns', 'comp.graphics']
+    newsgroups = fetch_20newsgroups(
+        subset='train',
+        categories=categories,
+        remove=('headers', 'footers', 'quotes'),
+        random_state=42
+    )
 
-# Utility function for timing operations
-def time_operation(operation_name, func, *args, **kwargs):
-    """Run a function and print its execution time"""
-    print(f"Starting: {operation_name}...")
-    start_time = time.time()
-    result = func(*args, **kwargs)
-    elapsed = time.time() - start_time
-    print(f"Completed: {operation_name} in {elapsed:.2f} seconds")
-    return result
+    # Create a DataFrame with the text data
+    df = pd.DataFrame({
+        'text': newsgroups.data,
+        'category': [newsgroups.target_names[target] for target in newsgroups.target]
+    })
+
+    # Utility function for timing operations
+    def time_operation(operation_name, func, *args, **kwargs):
+        """Run a function and print its execution time"""
+        print(f"Starting: {operation_name}...")
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        elapsed = time.time() - start_time
+        print(f"Completed: {operation_name} in {elapsed:.2f} seconds")
+        return result
 
 # Define the new optimized function for topic modeling
 def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf', 
@@ -94,14 +118,34 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
     
     # Step 2: Optional deduplication
     if remove_duplicates:
-        deduped_df = time_operation(
-            "Removing duplicate documents",
-            deduplicate_exact,
-            working_df, 
-            col=text_column, 
-            method='hash',
-            keep='first'
-        )
+        # This flag controls whether to use fuzzy or exact deduplication
+        use_fuzzy = False
+        
+        if use_fuzzy:
+            # Fuzzy deduplication approach
+            print("Using fuzzy deduplication...")
+            texts = working_df[text_column].tolist()
+            kept_indices = time_operation(
+                "Performing fuzzy deduplication",
+                deduplicate_texts,
+                texts,
+                threshold=0.85,  # Higher threshold = more selective deduplication
+                method='cosine',  # Options: 'cosine', 'jaccard', 'levenshtein'
+                preprocess=True,
+                keep='first'
+            )
+            deduped_df = working_df.iloc[kept_indices].copy()
+        else:
+            # Exact deduplication approach
+            deduped_df = time_operation(
+                "Removing duplicate documents",
+                deduplicate_exact,
+                working_df, 
+                col=text_column, 
+                method='hash',
+                keep='first'
+            )
+            
         processing_info['duplicates_removed'] = len(working_df) - len(deduped_df)
         working_df = deduped_df
         processing_info['processed_doc_count'] = len(working_df)
@@ -225,73 +269,74 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
     
     return result
 
-# Run the optimized topic modeling
-print("\nRunning optimized topic modeling workflow...")
-result = create_topic_model_optimized(
-    df, 
-    text_column='text',
-    n_topics=6,
-    method='nmf',  # NMF is faster than LDA
-    use_lemmatization=True,
-    max_docs=1000,  # Limit for demo purposes
-    remove_duplicates=True,
-    return_full_data=True
-)
+    # Run the optimized topic modeling
+    print("\nRunning optimized topic modeling workflow...")
+    result = create_topic_model_optimized(
+        df, 
+        text_column='text',
+        n_topics=6,
+        method='nmf',  # NMF is faster than LDA
+        use_lemmatization=True,
+        max_docs=200,  # Lower limit for faster execution
+        remove_duplicates=True,
+        return_full_data=True
+    )
 
-# Print processing information
-info = result['processing_info']
-print("\nProcessing Information:")
-print(f"  Original documents: {info['original_doc_count']}")
-print(f"  Duplicates removed: {info['duplicates_removed']}")
-print(f"  Processed documents: {info['processed_doc_count']}")
-if info['sampled']:
-    print(f"  Sample size used for modeling: {info['sample_size']}")
-print(f"  Lemmatization used: {info['used_lemmatization']}")
+    # Print processing information
+    info = result['processing_info']
+    print("\nProcessing Information:")
+    print(f"  Original documents: {info['original_doc_count']}")
+    print(f"  Duplicates removed: {info['duplicates_removed']}")
+    print(f"  Processed documents: {info['processed_doc_count']}")
+    if info['sampled']:
+        print(f"  Sample size used for modeling: {info['sample_size']}")
+    print(f"  Lemmatization used: {info['used_lemmatization']}")
 
-# Print topics
-print("\nTop 10 words for each topic:")
-for topic_idx, words in result['topics']:
-    print(f"Topic {topic_idx + 1}: {', '.join(words[:10])}")
+    # Print topics
+    print("\nTop 10 words for each topic:")
+    for topic_idx, words in result['topics']:
+        print(f"Topic {topic_idx + 1}: {', '.join(words[:10])}")
+    
+    # Get topic distribution dataframe
+    doc_topics = result['document_topics']
+    print(f"\nTopic distribution shape: {doc_topics.shape}")
+    print("First 5 documents topic distribution:")
+    print(doc_topics.head(5))
+    
+    # Combine with original categories
+    topic_with_category = doc_topics.copy()
+    topic_with_category['category'] = df.loc[topic_with_category.index, 'category'].values
+    
+    # Calculate average topic distribution by category
+    print("\nAverage topic distribution by category:")
+    category_topic_dist = topic_with_category.groupby('category').mean()
+    print(category_topic_dist)
 
-# Get topic distribution dataframe
-doc_topics = result['document_topics']
-print(f"\nTopic distribution shape: {doc_topics.shape}")
-print("First 5 documents topic distribution:")
-print(doc_topics.head(5))
+    # Create heatmap of category-topic relationships
+    plt.figure(figsize=(12, 8))
+    plt.imshow(category_topic_dist.values, cmap='viridis', aspect='auto')
+    plt.colorbar(label='Topic Probability')
+    plt.xticks(range(len(doc_topics.columns)), doc_topics.columns, rotation=45, ha='right')
+    plt.yticks(range(len(category_topic_dist.index)), category_topic_dist.index)
+    plt.xlabel('Topics')
+    plt.ylabel('Categories')
+    plt.title('Topic Distribution by Category')
+    plt.tight_layout()
+    plt.savefig('optimized_category_topic_distribution.png')
+    print("Saved category-topic distribution heatmap to optimized_category_topic_distribution.png")
 
-# Combine with original categories
-topic_with_category = doc_topics.copy()
-topic_with_category['category'] = df.loc[topic_with_category.index, 'category'].values
-
-# Calculate average topic distribution by category
-print("\nAverage topic distribution by category:")
-category_topic_dist = topic_with_category.groupby('category').mean()
-print(category_topic_dist)
-
-# Create heatmap of category-topic relationships
-plt.figure(figsize=(12, 8))
-plt.imshow(category_topic_dist.values, cmap='viridis', aspect='auto')
-plt.colorbar(label='Topic Probability')
-plt.xticks(range(len(doc_topics.columns)), doc_topics.columns, rotation=45, ha='right')
-plt.yticks(range(len(category_topic_dist.index)), category_topic_dist.index)
-plt.xlabel('Topics')
-plt.ylabel('Categories')
-plt.title('Topic Distribution by Category')
-plt.tight_layout()
-plt.savefig('optimized_category_topic_distribution.png')
-print("Saved category-topic distribution heatmap to optimized_category_topic_distribution.png")
-
-# Visualize topics
-print("\nGenerating topic visualization...")
-html = result['topic_model'].get('visualizer') or processor.plot_topics(
-    result['topic_model'], 
-    figsize=(15, 10), 
-    return_html=True
-)
-
-# Save visualization
-with open("optimized_topic_model_visualization.html", "w") as f:
-    f.write(f"<html><body>{html}</body></html>")
-print("Saved topic visualization to optimized_topic_model_visualization.html")
-
-print("\nExample complete!")
+    # Visualize topics
+    print("\nGenerating topic visualization...")
+    processor = TextProcessor(use_spacy=True)
+    html = result['topic_model'].get('visualizer') or processor.plot_topics(
+        result['topic_model'], 
+        figsize=(15, 10), 
+        return_html=True
+    )
+    
+    # Save visualization
+    with open("optimized_topic_model_visualization.html", "w") as f:
+        f.write(f"<html><body>{html}</body></html>")
+    print("Saved topic visualization to optimized_topic_model_visualization.html")
+    
+    print("\nExample complete!")

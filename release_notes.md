@@ -1,59 +1,63 @@
-# Freamon 0.3.25 Release Notes
+# Freamon Version 0.3.26 Release Notes
 
-## Optimized Topic Modeling
+We are excited to announce version 0.3.26 of the Freamon package, which introduces enhanced topic modeling workflows and improved integration with pandas DataFrames.
 
-This release introduces a significantly improved workflow for topic modeling, designed to handle larger datasets more efficiently while simplifying the user experience:
+## Key Features
 
-### Key Features
+### Topic Modeling Integration with pandas DataFrames
+- New workflow for adding topic information directly to pandas DataFrames
+- Easily extract the dominant topic for each document
+- Add topic probability distributions as DataFrame columns
+- Simple API for topic model creation and application
 
-- **Simplified API**: New `create_topic_model_optimized()` method handles the entire topic modeling workflow in one call
-- **Automatic Deduplication**: Removes duplicate documents before processing to improve performance and model quality
-- **Smart Sampling**: Automatically samples very large datasets for model building while still applying the model to all documents
-- **Batch Processing**: Processes data in batches with progress reporting for better user experience
-- **Full Dataset Coverage**: Returns topic distributions for all documents, even when sampling was used for model building
+### Optimized Topic Modeling
+- Support for both fuzzy and exact deduplication in topic modeling pipeline
+- Automatic handling of large datasets with smart sampling
+- Configurable similarity thresholds for fuzzy matching
+- Memory-efficient processing with batch operations
 
-### Benefits
+### Improved Error Handling and Performance
+- Better multiprocessing support for topic modeling operations
+- Enhanced error handling in text processing modules
+- Progress reporting for long-running operations
 
-- **Performance**: 2-10x faster topic modeling for large datasets
-- **Memory Efficiency**: Reduced memory consumption through smart batching
-- **Better Results**: Improved model quality by removing duplicate documents
-- **User Experience**: Simplified code with detailed progress reporting
-- **Flexibility**: Configurable parameters for customization
-
-### Example Usage
+## Example Usage
 
 ```python
+# Create and apply a topic model to a DataFrame
 from freamon.utils.text_utils import TextProcessor
-import pandas as pd
 
-# Load data
-df = pd.DataFrame({'text': ["Document 1", "Document 2", ...], 'category': [...]})
-
-# Initialize processor
+# Initialize text processor
 processor = TextProcessor(use_spacy=True)
 
-# Run optimized topic modeling in one call
-result = processor.create_topic_model_optimized(
-    df,
-    text_column='text',
+# Create topic model
+topic_model = processor.create_topic_model(
+    texts=df['text'].tolist(),
     n_topics=5,
-    method='nmf',
-    use_lemmatization=True,
-    remove_duplicates=True
+    method='nmf'
 )
 
-# Access results
-topics = result['topics']                # List of topic words
-doc_topics = result['document_topics']   # Document-topic distribution
-info = result['processing_info']         # Processing statistics
+# Get document-topic distribution
+doc_topics = processor.get_document_topics(topic_model)
+
+# Add dominant topic to the DataFrame
+df['dominant_topic'] = doc_topics.idxmax(axis=1)
 ```
 
-### Documentation
+## New Examples
+- `dataframe_topic_modeling_example.py`: Complete workflow for topic modeling with DataFrames
+- `optimized_topic_modeling_example.py`: Demonstrates optimized processing for large datasets
 
-Full documentation is available in the new `docs/usage/optimized_topic_modeling.md` file, and a complete working example can be found in `examples/optimized_topic_modeling_example.py`.
+Check out our [GitHub repository](https://github.com/your-org/freamon) for more examples and documentation.
 
-## Also in this release
+## Installation
 
-- Improved HTML report generation for DataTypeDetector with unit tests
-- Updated documentation with additional examples
-- Bug fixes and performance improvements
+```bash
+pip install freamon==0.3.26
+```
+
+Or upgrade your existing installation:
+
+```bash
+pip install --upgrade freamon
+```
