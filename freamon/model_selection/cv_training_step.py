@@ -83,8 +83,8 @@ class CrossValidationTrainingStep(PipelineStep):
         self.eval_metric = eval_metric
         self.random_state = random_state
         
-        # Initialize cross-validated trainer
-        self.cv_trainer = CrossValidatedTrainer(
+        # Initialize cross-validation trainer
+        self.cv_trainer = CrossValidationTrainer(
             model_type=model_type,
             problem_type=problem_type,
             cv_strategy=cv_strategy,
