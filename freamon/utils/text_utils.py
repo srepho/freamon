@@ -588,7 +588,8 @@ class TextProcessor:
 def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf', 
                                preprocessing_options=None, max_docs=None,
                                deduplication_options=None, return_full_data=True,
-                               return_original_mapping=False, use_multiprocessing=True):
+                               return_original_mapping=False, use_multiprocessing=True,
+                               anonymize=False, anonymization_config=None):
     """
     Optimized topic modeling workflow with enhanced text preprocessing, deduplication,
     and smart sampling for large datasets up to 100K rows.
@@ -629,6 +630,11 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
         Whether to return mapping from deduplicated documents to original documents
     use_multiprocessing : bool, default=True
         Whether to use multiprocessing for text preprocessing (for large datasets)
+    anonymize : bool, default=False
+        Whether to anonymize personally identifiable information (PII) before processing 
+        (requires Allyanonimiser package)
+    anonymization_config : dict, default=None
+        Configuration options for Allyanonimiser (e.g., patterns to use, replacement strategy)
         
     Returns:
     --------
@@ -682,7 +688,8 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
         'sample_size': len(df),
         'used_lemmatization': preproc_opts['use_lemmatization'],
         'deduplication_method': dedup_opts['method'],
-        'preprocessing_enabled': preproc_opts['enabled']
+        'preprocessing_enabled': preproc_opts['enabled'],
+        'anonymization_enabled': anonymize
     }
     
     # Setup multiprocessing if enabled for large datasets
@@ -709,6 +716,48 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
     
     # Make a copy to avoid modifying the original
     working_df = df.copy()
+    
+    # Initialize anonymizer if requested
+    anonymizer = None
+    if anonymize:
+        try:
+            from allyanonimiser import Anonymizer
+            anonymizer = Anonymizer(**(anonymization_config or {}))
+            print("Using Allyanonimiser for PII anonymization")
+            processing_info['anonymization_available'] = True
+        except ImportError:
+            warnings.warn("Allyanonimiser package not found. Anonymization will be skipped.")
+            processing_info['anonymization_available'] = False
+            anonymize = False
+    
+    # Apply anonymization if requested and available
+    if anonymize and anonymizer:
+        print("Anonymizing text data...")
+        start_time = time.time()
+        
+        # Process in batches for better progress reporting
+        anonymized_texts = []
+        batch_size = 1000  # Fixed batch size for anonymization
+        
+        for i in range(0, len(working_df), batch_size):
+            batch = working_df.iloc[i:i+batch_size]
+            batch_texts = batch[text_column].fillna("").tolist()
+            
+            # Apply anonymization
+            processed_batch = [anonymizer.anonymize_text(text) for text in batch_texts]
+            anonymized_texts.extend(processed_batch)
+            
+            # Report progress
+            progress = min(100, (i + len(batch)) * 100 // len(working_df))
+            elapsed = time.time() - start_time
+            print(f"  Anonymization progress: {progress}% ({i + len(batch)}/{len(working_df)}) - {elapsed:.1f}s", end='\r')
+        
+        # Update the dataframe with anonymized texts
+        working_df[text_column] = anonymized_texts
+        
+        elapsed = time.time() - start_time
+        print(f"\nAnonymization completed in {elapsed:.2f} seconds                      ")
+        processing_info['anonymization_time'] = elapsed
     
     # Keep track of document mapping for deduplication
     deduplication_mapping = None

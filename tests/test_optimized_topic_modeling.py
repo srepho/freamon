@@ -278,3 +278,91 @@ class TestOptimizedTopicModeling:
                 pytest.skip("Not enough text data for topic modeling")
             else:
                 raise e
+                
+    @patch('freamon.utils.text_utils.Anonymizer')
+    def test_optimized_topic_model_with_anonymization(self, mock_anonymizer, sample_df):
+        """Test the optimized topic model with anonymization."""
+        try:
+            # Skip if scikit-learn is not available
+            import sklearn
+        except ImportError:
+            pytest.skip("scikit-learn not available")
+        
+        # Setup mock for anonymizer
+        mock_instance = MagicMock()
+        mock_anonymizer.return_value = mock_instance
+        # Set up the anonymize_text method to replace certain patterns with anonymized versions
+        mock_instance.anonymize_text.side_effect = lambda text: text.replace("patient", "[PERSON]").replace("political", "[CONTENT]")
+        
+        # Add some PII to the sample data
+        sample_df_with_pii = sample_df.copy()
+        sample_df_with_pii.loc[0, 'text'] = sample_df_with_pii.loc[0, 'text'] + " Patient John Smith can be contacted at john.smith@example.com."
+        sample_df_with_pii.loc[2, 'text'] = sample_df_with_pii.loc[2, 'text'] + " Contact the coach at (555) 123-4567."
+        
+        try:
+            # Configure with anonymization enabled
+            result = create_topic_model_optimized(
+                sample_df_with_pii,
+                text_column='text',
+                n_topics=2,
+                method='nmf',
+                preprocessing_options={'enabled': True},
+                deduplication_options={'enabled': False},
+                anonymize=True,
+                anonymization_config={'custom_patterns': True},
+                use_multiprocessing=False
+            )
+            
+            # Check that anonymization was performed
+            assert result['processing_info']['anonymization_enabled'] is True
+            assert 'anonymization_time' in result['processing_info']
+            
+            # Verify that anonymizer was called for each text
+            assert mock_instance.anonymize_text.call_count == len(sample_df_with_pii)
+            
+            # Check that model was created
+            assert 'topic_model' in result
+            assert 'document_topics' in result
+            
+        except Exception as e:
+            if "empty vocabulary" in str(e).lower():
+                pytest.skip("Not enough text data for topic modeling")
+            else:
+                raise e
+                
+    def test_optimized_topic_model_anonymization_not_available(self, sample_df):
+        """Test graceful handling when anonymization is requested but not available."""
+        try:
+            # Skip if scikit-learn is not available
+            import sklearn
+        except ImportError:
+            pytest.skip("scikit-learn not available")
+            
+        # Mock a scenario where allyanonimiser is not available
+        with patch('freamon.utils.text_utils.Anonymizer', side_effect=ImportError()):
+            try:
+                # Configure with anonymization enabled but unavailable
+                result = create_topic_model_optimized(
+                    sample_df,
+                    text_column='text',
+                    n_topics=2,
+                    method='nmf',
+                    preprocessing_options={'enabled': True},
+                    deduplication_options={'enabled': False},
+                    anonymize=True,  # Request anonymization
+                    use_multiprocessing=False
+                )
+                
+                # Check that the function still completed successfully
+                assert 'topic_model' in result
+                assert 'document_topics' in result
+                
+                # Check that anonymization was disabled gracefully
+                assert result['processing_info']['anonymization_enabled'] is False
+                assert result['processing_info']['anonymization_available'] is False
+                
+            except Exception as e:
+                if "empty vocabulary" in str(e).lower():
+                    pytest.skip("Not enough text data for topic modeling")
+                else:
+                    raise e
