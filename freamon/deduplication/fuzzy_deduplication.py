@@ -264,8 +264,10 @@ def deduplicate_texts(
     method: str = 'cosine',
     preprocess: bool = True,
     keep: str = 'first',
-    text_processor: Optional[TextProcessor] = None
-) -> List[int]:
+    text_processor: Optional[TextProcessor] = None,
+    return_indices: bool = True,
+    return_similarity_dict: bool = False
+) -> Union[List[int], Tuple[List[int], Dict[int, List[Tuple[int, float]]]]]:
     """
     Deduplicate texts based on similarity.
     
@@ -283,11 +285,17 @@ def deduplicate_texts(
         Which instance to keep: 'first', 'last', or 'longest'.
     text_processor : Optional[TextProcessor], default=None
         Instance of TextProcessor. If None, a new one will be created.
+    return_indices : bool, default=True
+        This parameter is kept for API compatibility and has no effect as
+        the function always returns indices.
+    return_similarity_dict : bool, default=False
+        If True, also return the similarity dictionary with scores.
     
     Returns
     -------
-    List[int]
-        Indices of unique texts after deduplication.
+    Union[List[int], Tuple[List[int], Dict[int, List[Tuple[int, float]]]]]
+        If return_similarity_dict=False: List of indices of unique texts after deduplication.
+        If return_similarity_dict=True: Tuple of (kept_indices, similarity_dict)
     """
     # Create TextProcessor if not provided
     if text_processor is None:
@@ -345,4 +353,10 @@ def deduplicate_texts(
             
             keep_indices.append(keep_idx)
     
-    return sorted(keep_indices)
+    result = sorted(keep_indices)
+    
+    # Return result based on return_similarity_dict parameter
+    if return_similarity_dict:
+        return result, duplicates_dict
+    else:
+        return result

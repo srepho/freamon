@@ -28,8 +28,8 @@ from freamon.pipeline.steps import (
     PredictionStep,
     EvaluationStep
 )
-from freamon.utils.text_utils import preprocess_text
-from freamon.modeling.factory import get_model
+from freamon.utils.text_utils import TextProcessor
+from freamon.modeling.factory import create_model
 
 
 class IndexTrackingPipeline(Pipeline):
@@ -37,7 +37,8 @@ class IndexTrackingPipeline(Pipeline):
     
     def __init__(self, steps=None, name=None):
         """Initialize the pipeline with index tracking."""
-        super().__init__(steps=steps, name=name)
+        super().__init__(steps=steps)
+        self.name = name  # Store name separately
         self.original_indices = None
         self.index_mappings = {}  # Maps step name to index mapping dict
         self._original_df = None
@@ -119,6 +120,10 @@ class IndexTrackingPipeline(Pipeline):
         # Create a new dataframe with the original index
         full_result = pd.DataFrame(index=self.original_indices)
         
+        # Initialize with columns from result_df
+        for col in result_df.columns:
+            full_result[col] = pd.NA
+        
         # Get mapping for the step
         mapping = self.index_mappings[step_name]['current_to_original']
         
@@ -126,7 +131,8 @@ class IndexTrackingPipeline(Pipeline):
         for curr_idx, row in result_df.iterrows():
             orig_idx = mapping.get(curr_idx)
             if orig_idx is not None and orig_idx in full_result.index:
-                full_result.loc[orig_idx] = row
+                for col in result_df.columns:
+                    full_result.loc[orig_idx, col] = row[col]
             
         # Add flag indicating if record is in the current step
         orig_to_current = self.index_mappings[step_name]['original_to_current']
@@ -139,9 +145,9 @@ class IndexTrackingPipeline(Pipeline):
             if isinstance(fill_value, dict):
                 for col, val in fill_value.items():
                     if col in full_result.columns:
-                        full_result[col].fillna(val, inplace=True)
+                        full_result[col] = full_result[col].fillna(val)
             else:
-                full_result.fillna(fill_value, inplace=True)
+                full_result = full_result.fillna(fill_value)
             
         return full_result
     
@@ -223,16 +229,16 @@ class HashDeduplicationStep(PreprocessingStep):
         super().__init__(name=name)
         self.text_column = text_column
         
-    def fit(self, df):
+    def fit(self, X, y=None, **kwargs):
         """Fit the deduplication step (no-op)."""
         return self
         
-    def transform(self, df):
+    def transform(self, X, **kwargs):
         """Apply hash-based deduplication."""
-        text_series = df[self.text_column]
+        text_series = X[self.text_column]
         kept_indices = hash_deduplication(text_series, return_indices=True)
         
-        return df.iloc[kept_indices].reset_index(drop=True)
+        return X.iloc[kept_indices].reset_index(drop=True)
 
 
 class SimilarityDeduplicationStep(PreprocessingStep):
@@ -245,13 +251,13 @@ class SimilarityDeduplicationStep(PreprocessingStep):
         self.method = method
         self.threshold = threshold
         
-    def fit(self, df):
+    def fit(self, X, y=None, **kwargs):
         """Fit the deduplication step (no-op)."""
         return self
         
-    def transform(self, df):
+    def transform(self, X, **kwargs):
         """Apply similarity-based deduplication."""
-        text_series = df[self.text_column]
+        text_series = X[self.text_column]
         kept_indices = deduplicate_texts(
             text_series,
             method=self.method,
@@ -259,7 +265,7 @@ class SimilarityDeduplicationStep(PreprocessingStep):
             return_indices=True
         )
         
-        return df.iloc[kept_indices].reset_index(drop=True)
+        return X.iloc[kept_indices].reset_index(drop=True)
 
 
 class TextPreprocessingStep(PreprocessingStep):
@@ -270,15 +276,18 @@ class TextPreprocessingStep(PreprocessingStep):
         super().__init__(name=name)
         self.text_column = text_column
         self.output_column = output_column or f"processed_{text_column}"
+        self.text_processor = TextProcessor()
         
-    def fit(self, df):
+    def fit(self, X, y=None, **kwargs):
         """Fit the preprocessing step (no-op)."""
         return self
         
-    def transform(self, df):
+    def transform(self, X, **kwargs):
         """Apply text preprocessing."""
-        df = df.copy()
-        df[self.output_column] = df[self.text_column].apply(preprocess_text)
+        df = X.copy()
+        df[self.output_column] = df[self.text_column].apply(
+            lambda x: self.text_processor.preprocess_text(x)
+        )
         return df
 
 
@@ -564,7 +573,14 @@ def find_similar_texts_in_df(df, text, column, threshold=0.8):
     
     # Create a temporary dataframe with the new text
     temp_df = df.copy()
-    temp_df.loc[-1] = [text, '']  # Add a temporary row
+    
+    # Add a temporary row with proper handling of dataframe structure
+    temp_row = pd.Series([''] * len(df.columns), index=df.columns)
+    temp_row[column] = text
+    if 'category' in df.columns:
+        temp_row['category'] = ''  # Handle category column which is required
+    
+    temp_df.loc[-1] = temp_row
     
     # Vectorize
     vectorizer = TfidfVectorizer()

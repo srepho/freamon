@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 0.3.24 - HTML Report Generation for DataTypeDetector
+- Added save_html_report() method to DataTypeDetector for generating HTML reports
+- Added get_column_report_html() method to get HTML content as a string
+- Enhanced HTML reports with color coding for different data types
+- Added styling for semantic types, null percentages, and conversions
+- Included detailed statistical information in reports
+- Added timestamp and summary information in generated reports
+- Improved documentation with examples for HTML report generation
+
 ## Version 0.3.23 - Automatic Matplotlib Character Fixes
 - Automated special character handling in matplotlib visualizations 
 - Modified matplotlib_fixes.py to apply fixes automatically on import

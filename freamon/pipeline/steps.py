@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
+from abc import abstractmethod
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,199 @@ from freamon.modeling.factory import create_model
 from freamon.modeling.tuning import LightGBMTuner
 from freamon.modeling.lightgbm import LightGBMModel
 from freamon.modeling.importance import calculate_permutation_importance
+from sklearn.model_selection import train_test_split
+
+
+class PreprocessingStep(PipelineStep):
+    """Base class for data preprocessing steps in a pipeline."""
+    
+    def __init__(self, name: str):
+        """Initialize preprocessing step.
+        
+        Args:
+            name: Name of the step
+        """
+        super().__init__(name)
+    
+    @abstractmethod
+    def fit(self, X: pd.DataFrame, y: Optional[pd.Series] = None, **kwargs) -> 'PreprocessingStep':
+        """Fit the preprocessing step.
+        
+        Args:
+            X: Feature dataframe
+            y: Target series (optional)
+            **kwargs: Additional parameters
+            
+        Returns:
+            self: The fitted step
+        """
+        pass
+        
+    @abstractmethod
+    def transform(self, X: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """Apply the preprocessing to the data.
+        
+        Args:
+            X: Feature dataframe
+            **kwargs: Additional parameters
+            
+        Returns:
+            Transformed dataframe
+        """
+        pass
+    
+    def fit_transform(self, X: pd.DataFrame, y: Optional[pd.Series] = None, **kwargs) -> pd.DataFrame:
+        """Fit and then transform the data.
+        
+        Args:
+            X: Feature dataframe
+            y: Target series (optional)
+            **kwargs: Additional parameters
+            
+        Returns:
+            Transformed dataframe
+        """
+        return self.fit(X, y, **kwargs).transform(X, **kwargs)
+
+
+class DataSplittingStep(PipelineStep):
+    """Pipeline step for splitting data into train and test sets."""
+    
+    def __init__(
+        self,
+        name: str,
+        target_column: str,
+        test_size: float = 0.2,
+        random_state: int = 42,
+        stratify: bool = True
+    ):
+        """Initialize data splitting step.
+        
+        Args:
+            name: Name of the step
+            target_column: Name of the target column
+            test_size: Proportion of data to use for testing
+            random_state: Random seed for reproducibility
+            stratify: Whether to stratify the split by target (for classification)
+        """
+        super().__init__(name)
+        self.target_column = target_column
+        self.test_size = test_size
+        self.random_state = random_state
+        self.stratify = stratify
+        self.X_train = None
+        self.X_test = None
+        self.y_train = None
+        self.y_test = None
+    
+    def fit(self, X: pd.DataFrame, y: Optional[pd.Series] = None, **kwargs) -> 'DataSplittingStep':
+        """Fit the data splitting step.
+        
+        Args:
+            X: Feature dataframe
+            y: Target series (not needed, will be extracted from X)
+            **kwargs: Additional parameters
+            
+        Returns:
+            self: The fitted step
+        """
+        if self.target_column not in X.columns:
+            raise ValueError(f"Target column '{self.target_column}' not found in the dataframe")
+        
+        # Extract target
+        y = X[self.target_column]
+        X_features = X.drop(columns=[self.target_column])
+        
+        # Split data
+        stratify_data = y if self.stratify else None
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
+            X_features, y, test_size=self.test_size, 
+            random_state=self.random_state, stratify=stratify_data
+        )
+        
+        self._is_fitted = True
+        return self
+    
+    def transform(self, X: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """Return training data.
+        
+        Args:
+            X: Feature dataframe (ignored)
+            **kwargs: Additional parameters
+            
+        Returns:
+            Training features
+        """
+        if not self._is_fitted:
+            raise ValueError("This DataSplittingStep instance is not fitted yet.")
+        
+        # By default, return training data
+        return self.X_train
+    
+    def get_train_data(self) -> Tuple[pd.DataFrame, pd.Series]:
+        """Get training data.
+        
+        Returns:
+            Tuple of (X_train, y_train)
+        """
+        if not self._is_fitted:
+            raise ValueError("This DataSplittingStep instance is not fitted yet.")
+        
+        return self.X_train, self.y_train
+    
+    def get_test_data(self) -> Tuple[pd.DataFrame, pd.Series]:
+        """Get test data.
+        
+        Returns:
+            Tuple of (X_test, y_test)
+        """
+        if not self._is_fitted:
+            raise ValueError("This DataSplittingStep instance is not fitted yet.")
+        
+        return self.X_test, self.y_test
+
+
+class TransformationStep(PipelineStep):
+    """Pipeline step for custom transformations using a function."""
+    
+    def __init__(self, name: str, transform_fn: Callable[[pd.DataFrame], pd.DataFrame]):
+        """Initialize transformation step.
+        
+        Args:
+            name: Name of the step
+            transform_fn: Function that transforms a dataframe
+        """
+        super().__init__(name)
+        self.transform_fn = transform_fn
+    
+    def fit(self, X: pd.DataFrame, y: Optional[pd.Series] = None, **kwargs) -> 'TransformationStep':
+        """Fit the transformation step (no-op).
+        
+        Args:
+            X: Feature dataframe
+            y: Target series (optional)
+            **kwargs: Additional parameters
+            
+        Returns:
+            self: The step
+        """
+        self._is_fitted = True
+        return self
+    
+    def transform(self, X: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """Apply the transformation function to the data.
+        
+        Args:
+            X: Feature dataframe
+            **kwargs: Additional parameters
+            
+        Returns:
+            Transformed dataframe
+        """
+        if not self._is_fitted:
+            raise ValueError("This TransformationStep instance is not fitted yet.")
+        
+        return self.transform_fn(X)
 
 
 class FeatureEngineeringStep(PipelineStep):
@@ -795,6 +989,108 @@ class HyperparameterTuningStep(PipelineStep):
             raise ValueError("Tuner not available")
         
         return self.tuner.plot_param_importances()
+
+
+class PredictionStep(PipelineStep):
+    """Pipeline step for making predictions using a trained model.
+    
+    This step extracts a model from a previous ModelTrainingStep or 
+    HyperparameterTuningStep and uses it to make predictions.
+    """
+    
+    def __init__(
+        self,
+        name: str,
+        model_step: Optional[str] = None,
+        prediction_type: str = "predict"
+    ):
+        """Initialize prediction step.
+        
+        Args:
+            name: Name of the step
+            model_step: Name of the model training step (if None, will look for one)
+            prediction_type: Type of prediction ('predict' or 'predict_proba')
+        """
+        super().__init__(name)
+        self.model_step = model_step
+        self.prediction_type = prediction_type
+        self.pipeline = None
+    
+    def fit(self, X: pd.DataFrame, y: Optional[pd.Series] = None, **kwargs) -> 'PredictionStep':
+        """Fit the prediction step.
+        
+        Args:
+            X: Feature dataframe
+            y: Target series (not needed)
+            **kwargs: Additional parameters
+            
+        Returns:
+            self: The fitted step
+        """
+        # Store reference to the pipeline
+        if "pipeline" in kwargs:
+            self.pipeline = kwargs["pipeline"]
+        
+        self._is_fitted = True
+        return self
+    
+    def transform(self, X: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """Make predictions using the model from the model training step.
+        
+        Args:
+            X: Feature dataframe
+            **kwargs: Additional parameters
+            
+        Returns:
+            Dataframe with original features and predictions
+        """
+        if not self._is_fitted:
+            raise ValueError("This PredictionStep instance is not fitted yet.")
+        
+        # Find the model step if not specified
+        model_step = self._get_model_step()
+        
+        # Get the model
+        model = model_step.trainer.model if hasattr(model_step, 'trainer') else model_step.model
+        
+        # Make predictions based on prediction_type
+        if self.prediction_type == "predict":
+            predictions = model.predict(X)
+        elif self.prediction_type == "predict_proba":
+            predictions = model.predict_proba(X)
+            # If binary classification with 2 columns, take the positive class
+            if isinstance(predictions, np.ndarray) and predictions.ndim > 1 and predictions.shape[1] == 2:
+                predictions = predictions[:, 1]
+        else:
+            raise ValueError(f"Unknown prediction_type: {self.prediction_type}")
+        
+        # Create result dataframe
+        result = X.copy()
+        result['prediction'] = predictions
+        
+        return result
+    
+    def _get_model_step(self) -> PipelineStep:
+        """Get the model step from the pipeline.
+        
+        Returns:
+            Model training step
+        """
+        if self.pipeline is None:
+            raise ValueError("Pipeline reference not set. Make sure this step is part of a pipeline.")
+        
+        # If model step name is specified, get it directly
+        if self.model_step is not None:
+            if self.model_step not in self.pipeline.get_step_names():
+                raise ValueError(f"Model step '{self.model_step}' not found in the pipeline")
+            return self.pipeline.get_step(self.model_step)
+        
+        # Otherwise, look for a model training step
+        for step in self.pipeline.steps:
+            if isinstance(step, (ModelTrainingStep, HyperparameterTuningStep)):
+                return step
+        
+        raise ValueError("No model training step found in the pipeline")
 
 
 class EvaluationStep(PipelineStep):

@@ -6,6 +6,11 @@ import pandas as pd
 import numpy as np
 import pytest
 from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+
+# Configure matplotlib to handle currency symbols properly
+plt.rcParams['text.usetex'] = False
+plt.rcParams['mathtext.default'] = 'regular'
 
 from freamon.utils.datatype_detector import (
     DataTypeDetector,

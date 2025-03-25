@@ -12,28 +12,25 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(leve
 logger = logging.getLogger('freamon.utils.datatype_detector')
 logger.setLevel(logging.DEBUG)
 
-# Create a sample DataFrame with the problematic format
+# Create a sample DataFrame with various month-year formats
 data = {
-    'month_year_column': ['Aug-24', 'Oct-24', 'Nov-24', 'Dec-24', 'Jan-25']
+    'month_year_column': ['Jun-24', 'Jul-24', 'Aug-24', 'Sep-24', 'Oct-24'],
+    'month_with_missing': ['Jun-24', None, 'Aug-24', 'Sep-24', None],
+    'mixed_data': ['Jun-24', 'Other text', 'Aug-24', 'Not a month', 'Oct-24'],
+    'numeric': [1, 2, 3, 4, 5]
 }
 df = pd.DataFrame(data)
 
+print("Original DataFrame:")
+print(df)
+print("\nDataFrame dtypes:")
+print(df.dtypes)
+
 # First, test the direct pattern matching function
-values = df['month_year_column']
-is_month_year = is_month_year_format(values)
-print(f"Direct check with is_month_year_format: {is_month_year}")
-
-# Check each value against the regex pattern to see if it matches
-import re
-month_year_pattern = re.compile(
-    r'^([A-Za-z]{3,9})[-/\. ]?(20\d{2}|\d{2})$|^(0?\d|1[0-2])[-/\.](20\d{2}|\d{2})$', 
-    re.IGNORECASE
-)
-
-print("\nChecking each value against the pattern:")
-for val in values:
-    match = month_year_pattern.match(str(val).strip())
-    print(f"  '{val}': {'✓' if match else '✗'} {match.groups() if match else ''}")
+for col in ['month_year_column', 'month_with_missing', 'mixed_data']:
+    values = df[col].dropna()
+    is_month_year = is_month_year_format(values)
+    print(f"\nDirect check for {col} with is_month_year_format: {is_month_year}")
 
 # Now run through the DataTypeDetector
 print("\nRunning DataTypeDetector:")
@@ -54,45 +51,7 @@ print("\nConversion suggestions:")
 for col, suggestion in detector.conversion_suggestions.items():
     print(f"  {col}: {suggestion}")
 
-# If the detection didn't work as expected, print detailed debug info
-if df.columns[0] not in detector.semantic_types or detector.semantic_types[df.columns[0]] != 'month_year_format':
-    print("\nDetailed debug info:")
-    # Try the exact code path that's used in DataTypeDetector
-    column = df.columns[0]
-    sample = detector._get_column_sample(column)
-    
-    # Check if any values are strings
-    print(f"  Sample data types: {sample.apply(type).value_counts().to_dict()}")
-    
-    # For string columns, check if they're likely month-year format
-    if 'object' in detector.column_types.get(column, ''):
-        print(f"  Column is string type: {detector.column_types.get(column)}")
-        
-        # Check if it's a month-year format
-        print(f"  Checking for month-year format...")
-        # Get non-null values for analysis
-        valid_values = sample.dropna()
-        if len(valid_values) > 0 and is_month_year_format(valid_values, threshold=detector.threshold):
-            print("  ✓ Month-year format detected!")
-        else:
-            print("  ✗ Month-year format not detected")
-else:
-    # Test the conversion if it was detected correctly
-    print("\nTesting conversion functionality:")
-    print(f"Original values: {df['month_year_column'].tolist()}")
-    
-    # Try converting with date_converters.convert_month_year_format directly
-    converted = convert_month_year_format(df['month_year_column'])
-    print(f"Converted with convert_month_year_format: {converted.tolist()}")
-    
-    # Try converting with the detector
-    converted_df = detector.convert_types()
-    print(f"Converted with detector.convert_types(): {converted_df['month_year_column'].tolist()}")
-    print(f"Data type after conversion: {converted_df['month_year_column'].dtype}")
-    
-    # Show resulting year and month values
-    if pd.api.types.is_datetime64_dtype(converted_df['month_year_column'].dtype):
-        years = [d.year if not pd.isna(d) else None for d in converted_df['month_year_column']]
-        months = [d.month if not pd.isna(d) else None for d in converted_df['month_year_column']]
-        print(f"Years after conversion: {years}")
-        print(f"Months after conversion: {months}")
+# Test conversion
+print("\nTesting conversion:")
+converted_df = detector.convert_types()
+print(converted_df)

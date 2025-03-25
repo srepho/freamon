@@ -38,14 +38,35 @@ def convert_month_year_format(values: Union[pd.Series, List, np.ndarray]) -> pd.
     3   2025-01-01
     dtype: datetime64[ns]
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Convert to pandas Series if not already
     if not isinstance(values, pd.Series):
         values = pd.Series(values)
     
-    # Initialize result series with NaT
-    result = pd.Series([pd.NaT] * len(values), index=values.index)
+    # Convert everything to Python strings for consistency
+    # This avoids issues with numpy.str_ and other types
+    # Replace NaN with empty strings to avoid errors
+    string_values = values.fillna('').astype(str)
+    string_values = string_values.replace('', np.nan)
     
-    # Define format patterns and try each one
+    # Try a direct conversion with the most common format first
+    # Most month-year formats use the 3-letter abbreviation with 2-digit year
+    try:
+        # This will handle values like 'Jun-24', 'Jul-24', etc.
+        result = pd.to_datetime(string_values, format='%b-%y', errors='coerce')
+        logger.debug(f"Direct conversion with '%b-%y' format successful for {result.notna().sum()} values")
+        
+        # If all values were successfully parsed, return the result
+        if result.notna().all():
+            return result
+    except Exception as e:
+        logger.debug(f"Direct conversion with '%b-%y' format failed: {e}")
+        # Initialize result series with NaT if direct conversion failed
+        result = pd.Series([pd.NaT] * len(values), index=values.index)
+    
+    # Define format patterns and try each one for remaining NaT values
     format_patterns = [
         # Month abbreviation with 2-digit year (Aug-24)
         ('%b-%y', r'^[A-Za-z]{3}-\d{2}$'),
@@ -73,18 +94,34 @@ def convert_month_year_format(values: Union[pd.Series, List, np.ndarray]) -> pd.
         ('%m.%y', r'^\d{1,2}\.\d{2}$'),
     ]
     
-    # Try each format pattern
+    # Process each pattern for remaining NaT values
     for fmt, pattern in format_patterns:
-        mask = values.astype(str).str.match(pattern, case=False)
-        if mask.any():
-            try:
-                parsed = pd.to_datetime(values[mask], format=fmt, errors='coerce')
-                # Only update values that haven't already been successfully parsed
-                still_nat = result.isna() & mask
-                result[still_nat] = parsed[parsed.index.isin(result[still_nat].index)]
-            except Exception as e:
-                print(f"Error parsing with format {fmt}: {e}")
-                pass
+        # Skip if all values have been parsed
+        if result.notna().all():
+            break
+            
+        # Only process values that are still NaT
+        nat_mask = result.isna()
+        if not nat_mask.any():
+            continue
+            
+        # Check which values match the pattern (skip NaN values)
+        pattern_mask = string_values[nat_mask].str.match(pattern, case=False, na=False)
+        if not pattern_mask.any():
+            continue
+            
+        # Combine masks to get values that are both NaT and match the pattern
+        combined_mask_indices = nat_mask[nat_mask].index[pattern_mask]
+        
+        try:
+            # Convert these specific values
+            parsed = pd.to_datetime(string_values.loc[combined_mask_indices], format=fmt, errors='coerce')
+            
+            # Update the result series
+            result.loc[combined_mask_indices] = parsed
+            logger.debug(f"Parsed {parsed.notna().sum()} values with format '{fmt}'")
+        except Exception as e:
+            logger.debug(f"Error parsing with format '{fmt}': {e}")
     
     return result
 
@@ -126,8 +163,14 @@ def is_month_year_format(values: Union[pd.Series, List, np.ndarray], threshold: 
         re.IGNORECASE
     )
     
-    # Count matches
-    match_count = sum(1 for x in values if isinstance(x, str) and month_year_pattern.match(str(x).strip()))
+    # Count matches - handle numpy.str_ and other string-like types
+    match_count = 0
+    for x in values:
+        if pd.notna(x):  # Skip NaN/None values
+            x_str = str(x).strip()
+            if month_year_pattern.match(x_str):
+                match_count += 1
+    
     match_ratio = match_count / len(values)
     
     # Return True if the ratio exceeds the threshold

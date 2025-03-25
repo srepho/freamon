@@ -19,7 +19,7 @@ from sklearn.metrics import classification_report
 
 from freamon.data_quality.duplicates import detect_duplicates, remove_duplicates
 from freamon.deduplication.exact_deduplication import hash_deduplication
-from freamon.utils.dataframe_utils import convert_to_pandas
+from freamon.utils.dataframe_utils import convert_dataframe
 
 
 class IndexTracker:
@@ -107,15 +107,25 @@ class IndexTracker:
         # Create a new dataframe with the original index
         full_result = pd.DataFrame(index=original_df.index)
         
+        # Initialize with columns from result_df
+        for col in result_df.columns:
+            full_result[col] = pd.NA
+        
         # Map each result back to its original index
         for curr_idx, row in result_df.iterrows():
             orig_idx = self.current_to_original.get(curr_idx)
             if orig_idx is not None:
-                full_result.loc[orig_idx] = row
+                for col in result_df.columns:
+                    full_result.loc[orig_idx, col] = row[col]
             
         # Fill missing values
         if fill_value is not None:
-            full_result.fillna(fill_value, inplace=True)
+            if isinstance(fill_value, dict):
+                for col, val in fill_value.items():
+                    if col in full_result.columns:
+                        full_result[col] = full_result[col].fillna(val)
+            else:
+                full_result = full_result.fillna(fill_value)
             
         return full_result
 

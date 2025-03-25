@@ -1937,14 +1937,23 @@ class DataTypeDetector:
                     return ''
             
             def style_null_percentage(val):
-                if val == '0.0%':
+                if val == '0.0%' or val == '0.0[PERCENT]':
                     return 'color: green'
-                null_value = float(val.replace('%', ''))
-                if null_value > 50:
-                    return 'color: red; font-weight: bold'
-                elif null_value > 20:
-                    return 'color: orange'
-                else:
+                # Handle different formats of percentage values
+                try:
+                    if '[PERCENT]' in val:
+                        null_value = float(val.replace('[PERCENT]', ''))
+                    else:
+                        null_value = float(val.replace('%', ''))
+                        
+                    if null_value > 50:
+                        return 'color: red; font-weight: bold'
+                    elif null_value > 20:
+                        return 'color: orange'
+                    else:
+                        return ''
+                except (ValueError, TypeError):
+                    # Handle any parsing errors gracefully
                     return ''
             
             def style_suggested_conversion(val):
@@ -1979,6 +1988,336 @@ class DataTypeDetector:
             logger.warning(f"Error styling detection report: {str(e)}")
             # Fall back to returning the unstyled DataFrame
             return report_df
+            
+    def save_html_report(self, file_path, include_stats=True):
+        """
+        Generate and save an HTML report of the data type detection results.
+        
+        This method creates a standalone HTML file with a complete report of 
+        detected data types, semantic types, and conversion suggestions,
+        formatted with color highlighting for better visualization.
+        
+        Parameters
+        ----------
+        file_path : str
+            The path where the HTML report will be saved
+        include_stats : bool, default=True
+            Whether to include detailed statistics for each column
+            
+        Returns
+        -------
+        str
+            The path to the saved HTML file
+            
+        Examples
+        --------
+        >>> detector = DataTypeDetector(df)
+        >>> detector.detect_all_types()
+        >>> detector.save_html_report("datatype_detection_report.html")
+        'datatype_detection_report.html'
+        """
+        # Make sure we have detection results
+        if not self.column_types:
+            self.detect_all_types()
+            
+        # Get the detailed report
+        report = self.get_column_report()
+        
+        # Create initial HTML content with styling
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>DataType Detection Report</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    margin: 20px;
+                    line-height: 1.5;
+                }}
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin-top: 20px;
+                }}
+                th, td {{
+                    text-align: left;
+                    padding: 8px;
+                    border: 1px solid #ddd;
+                }}
+                th {{
+                    background-color: #f2f2f2;
+                    position: sticky;
+                    top: 0;
+                }}
+                tr:nth-child(even) {{
+                    background-color: #f9f9f9;
+                }}
+                h1, h2 {{
+                    color: #2c3e50;
+                }}
+                .datetime {{
+                    background-color: #BBDEFB;
+                }}
+                .categorical {{
+                    background-color: #C8E6C9;
+                }}
+                .numeric {{
+                    background-color: #FFF9C4;
+                }}
+                .string {{
+                    background-color: #F8BBD0;
+                }}
+                .id {{
+                    background-color: #D1C4E9;
+                }}
+                .suggestion {{
+                    background-color: #FFE0B2;
+                }}
+                .color-block {{
+                    display: inline-block;
+                    width: 20px;
+                    height: 20px;
+                    margin-right: 5px;
+                    vertical-align: middle;
+                }}
+                .null-high {{
+                    color: red;
+                    font-weight: bold;
+                }}
+                .null-medium {{
+                    color: orange;
+                }}
+                .null-none {{
+                    color: green;
+                }}
+                .summary {{
+                    margin: 20px 0;
+                    padding: 15px;
+                    background-color: #f8f9fa;
+                    border-radius: 5px;
+                    border-left: 5px solid #2c3e50;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>DataType Detection Report</h1>
+            
+            <div class="summary">
+                <p><strong>DataFrame Summary:</strong> {len(self.df.columns)} columns and {len(self.df)} rows</p>
+                <p><strong>Detection Timestamp:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            </div>
+            
+            <h2>Detection Results</h2>
+            <table>
+                <tr>
+                    <th>Column</th>
+                    <th>Storage Type</th>
+                    <th>Logical Type</th>
+                    <th>Semantic Type</th>
+                    <th>Null Count</th>
+                    <th>Null %</th>
+                    <th>Unique Values</th>
+                    <th>Suggested Conversion</th>
+        """
+        
+        # Add statistics columns if requested
+        if include_stats:
+            html_content += """
+                    <th>Min</th>
+                    <th>Max</th>
+                    <th>Mean</th>
+                    <th>Std Dev</th>
+                    <th>Avg Length</th>
+                    <th>Max Length</th>
+                    <th>Range</th>
+            """
+        
+        html_content += """
+                </tr>
+        """
+        
+        # Add rows to the HTML table
+        for col, info in report.items():
+            semantic = info.get('semantic_type', '')
+            
+            # Create suggestion info
+            if 'suggested_conversion' in info:
+                suggestion = info['suggested_conversion'].get('convert_to', '')
+                if 'note' in info['suggested_conversion']:
+                    suggestion += f" ({info['suggested_conversion']['note']})"
+            else:
+                suggestion = ''
+            
+            # Apply styling based on type
+            type_class = ""
+            if 'datetime' in info['logical_type']:
+                type_class = "class='datetime'"
+            elif 'categorical' in info['logical_type']:
+                type_class = "class='categorical'"
+            elif 'continuous' in info['logical_type'] or 'float' in info['logical_type'] or 'integer' in info['logical_type']:
+                type_class = "class='numeric'"
+            elif 'string' in info['logical_type']:
+                type_class = "class='string'"
+            
+            # Style for semantic type
+            semantic_class = ""
+            if semantic:
+                if 'date' in semantic.lower() or 'month_year' in semantic.lower():
+                    semantic_class = "class='datetime'"
+                elif 'id' in semantic.lower() or 'uuid' in semantic.lower():
+                    semantic_class = "class='id'"
+                else:
+                    semantic_class = "class='id'"
+            
+            # Style for null percentage
+            null_percent = info['null_percentage']
+            null_class = ""
+            if null_percent > 50:
+                null_class = "class='null-high'"
+            elif null_percent > 20:
+                null_class = "class='null-medium'"
+            elif null_percent == 0:
+                null_class = "class='null-none'"
+            
+            # Basic column info row
+            html_content += f"""
+                <tr>
+                    <td>{col}</td>
+                    <td>{info['storage_type']}</td>
+                    <td {type_class}>{info['logical_type']}</td>
+                    <td {semantic_class}>{semantic}</td>
+                    <td>{info['null_count']}</td>
+                    <td {null_class}>{null_percent:.1f}%</td>
+                    <td>{info['unique_count']}</td>
+                    <td class="suggestion">{suggestion}</td>
+            """
+            
+            # Add statistics if requested
+            if include_stats:
+                # Add numeric stats if available
+                if 'min' in info and info['logical_type'] != 'datetime':
+                    html_content += f"""
+                    <td>{info['min']:.2f}</td>
+                    <td>{info['max']:.2f}</td>
+                    <td>{info['mean']:.2f}</td>
+                    <td>{info['std']:.2f}</td>
+                    """
+                else:
+                    html_content += """
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    """
+                
+                # Add string/categorical stats if available
+                if 'avg_length' in info:
+                    html_content += f"""
+                    <td>{info['avg_length']:.1f}</td>
+                    <td>{info['max_length']}</td>
+                    """
+                else:
+                    html_content += """
+                    <td>-</td>
+                    <td>-</td>
+                    """
+                
+                # Add date range if available
+                if 'min' in info and info['logical_type'] == 'datetime':
+                    html_content += f"""
+                    <td>{info['min']} to {info['max']}</td>
+                    """
+                else:
+                    html_content += """
+                    <td>-</td>
+                    """
+            
+            html_content += """
+                </tr>
+            """
+        
+        # Add summary info and legend
+        html_content += """
+            </table>
+            
+            <h2>Color Legend</h2>
+            <div>
+                <div><span class="color-block datetime"></span> <strong>Date/Time data</strong> - datetime, timestamps, month-year formats</div>
+                <div><span class="color-block categorical"></span> <strong>Categorical data</strong> - low cardinality, enumerated values</div>
+                <div><span class="color-block numeric"></span> <strong>Numeric data</strong> - integers, floats, continuous values</div>
+                <div><span class="color-block string"></span> <strong>Text data</strong> - strings, free text</div>
+                <div><span class="color-block id"></span> <strong>IDs and semantic types</strong> - unique identifiers, emails, etc.</div>
+                <div><span class="color-block suggestion"></span> <strong>Suggested conversions</strong> - recommended type changes</div>
+            </div>
+
+            <h2>Null Values Legend</h2>
+            <div>
+                <div><span class="null-high">■</span> <strong>High (>50%)</strong> - Column has more than half nulls</div>
+                <div><span class="null-medium">■</span> <strong>Medium (20-50%)</strong> - Column has significant nulls</div>
+                <div><span class="null-none">■</span> <strong>None (0%)</strong> - Column has no nulls</div>
+            </div>
+            
+            <div style="margin-top: 30px; border-top: 1px solid #ddd; padding-top: 10px;">
+                <p><em>Generated by freamon.utils.datatype_detector.DataTypeDetector on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Write the HTML content to the specified file
+        try:
+            with open(file_path, 'w') as f:
+                f.write(html_content)
+            logger.info(f"HTML detection report saved to {file_path}")
+            return file_path
+        except Exception as e:
+            logger.error(f"Failed to save HTML report to {file_path}: {str(e)}")
+            raise IOError(f"Failed to save HTML report: {str(e)}")
+    
+    def get_column_report_html(self):
+        """
+        Generate HTML content for the detection report.
+        
+        This is a convenience method that generates the HTML report content
+        without saving it to a file, allowing for further customization
+        before saving or displaying.
+        
+        Returns
+        -------
+        str
+            HTML content as a string
+            
+        Examples
+        --------
+        >>> detector = DataTypeDetector(df)
+        >>> detector.detect_all_types()
+        >>> html_content = detector.get_column_report_html()
+        >>> with open('custom_report.html', 'w') as f:
+        ...     f.write(html_content)
+        """
+        # Make sure we have detection results
+        if not self.column_types:
+            self.detect_all_types()
+            
+        # Create a temporary file path
+        temp_path = "temp_report.html"
+        
+        # Generate the report
+        self.save_html_report(temp_path)
+        
+        # Read the content
+        with open(temp_path, 'r') as f:
+            html_content = f.read()
+            
+        # Remove the temporary file
+        try:
+            import os
+            os.remove(temp_path)
+        except:
+            pass
+            
+        return html_content
 
 
 def detect_column_types(

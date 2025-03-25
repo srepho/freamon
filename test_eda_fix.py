@@ -1,71 +1,76 @@
-"""
-Test script to verify fixes for EDA report generation when handling currency symbols
-and other special characters.
-
-This script tests the robust version of the EDA report generation with data 
-containing potentially problematic values like currency symbols, underscores, etc.
-"""
+"""Test script for EDA fix with complex currency data."""
 import pandas as pd
 import numpy as np
-from configure_matplotlib_for_currency import patch_freamon
+import matplotlib.pyplot as plt
+import sys
+import os
 
-# Apply the patches to make EDA more robust
-patch_freamon()
+# Add the project root to the path if not already there
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+from freamon.utils.matplotlib_fixes import patch_freamon_eda, apply_comprehensive_matplotlib_patches
 
-# Create a test dataframe with currency values
-def create_test_dataframe():
-    # Create a test dataframe with currency values
-    np.random.seed(42)
-    n = 200
-    
-    df = pd.DataFrame({
-        'id': range(1, n+1),
-        'price_$': np.random.uniform(10, 1000, n).round(2),  # Has $ in column name
-        'revenue': [f"${x:.2f}" for x in np.random.uniform(1000, 10000, n)],  # Has $ in values
-        'growth_rate_%': np.random.uniform(-5, 15, n).round(2),  # Has % in column name
-        'status': np.random.choice(['active', 'inactive', 'pending'], n),
-        'category': np.random.choice(['A_cat', 'B_cat', 'C_cat'], n),  # Has underscores
-        'date': pd.date_range(start='2020-01-01', periods=n),
-        'markdown_code': [f"`code_{i}`" for i in range(n)],  # Has backticks and underscores
-        'latex_math': [f"$y = {i}x + {i*2}$" for i in range(n)],  # Has LaTeX math syntax
-    })
-    
-    # Add some missing values
-    df.loc[np.random.choice(n, 20), 'price_$'] = np.nan
-    df.loc[np.random.choice(n, 20), 'revenue'] = np.nan
-    
-    return df
+# Apply patches to handle currency symbols
+apply_comprehensive_matplotlib_patches()
+patch_freamon_eda()
 
-# Create the test dataframe
-df = create_test_dataframe()
+# Create test dataframe with various currency formats and special characters
+df = pd.DataFrame({
+    'Price_USD': ['$1,234.56', '$2,345.67', '$3,456.78', '$4,567.89', '$5,678.90'],
+    'Price_EUR': ['€1,234.56', '€2,345.67', '€3,456.78', '€4,567.89', '€5,678.90'],
+    'Price_GBP': ['£1,234.56', '£2,345.67', '£3,456.78', '£4,567.89', '£5,678.90'],
+    'Price_JPY': ['¥123,456', '¥234,567', '¥345,678', '¥456,789', '¥567,890'],
+    'Price_Mix': ['$1,234.56', '€2,345.67', '£3,456.78', '¥456,789', '$5,678.90'],
+    'Special_Chars': ['abc_123', 'def^456', 'ghi&789', 'jkl*012', 'mno%345'],
+    'LaTeX_Symbols': ['$alpha$', '$beta$', '$gamma$', '$delta$', '$epsilon$'],
+    'Numeric': [1234.56, 2345.67, 3456.78, 4567.89, 5678.90],
+    'Category': ['A', 'B', 'A', 'C', 'B']
+})
 
-# Print the first few rows to verify
-print("Test dataframe created:")
-print(df.head())
-
-# Run EDA analysis with our patched version
-try:
-    from freamon.eda import EDAAnalyzer
-    
-    # Initialize the analyzer
-    analyzer = EDAAnalyzer(df, date_column='date')
-    
-    # Run full analysis with robust error handling
-    success = analyzer.run_full_analysis(
-        output_path='test_fix_report.html',
-        title='Test EDA Report with Currency Values',
-        include_multivariate=True,
-        show_progress=True
-    )
-    
-    if success:
-        print("\nEDA analysis completed successfully!")
-        print("Output saved to test_fix_report.html")
+# Explicitly set column types to avoid datetime conversion attempts
+for col in df.columns:
+    if col == 'Numeric':
+        df[col] = df[col].astype(float)
+    elif col == 'Category':
+        df[col] = df[col].astype('category')
     else:
-        print("\nEDA analysis completed with some errors.")
-        print("Check the warnings above and review the output file.")
-        
-except Exception as e:
-    print(f"\nError occurred: {str(e)}")
+        df[col] = df[col].astype(str)
 
-print("\nTest completed.")
+# Run EDA analysis
+from freamon.eda.analyzer import EDAAnalyzer
+analyzer = EDAAnalyzer(df, target_column='Category')
+report = analyzer.run_full_analysis(output_path="test_currency_report.html", title="Currency Test Report")
+
+print("Test complete! Report saved to test_currency_report.html")
+
+# Create a simple plot to verify currency display works correctly
+plt.figure(figsize=(10, 6))
+plt.bar(df['Category'], df['Numeric'])
+plt.title('Test with Category labels and numeric values')
+plt.xlabel('Category')
+plt.ylabel('Value ($)')
+plt.savefig('test_currency_plot.png')
+plt.close()
+
+# Test with various types of problematic strings
+test_strings = [
+    "$100.00",
+    "Price is $100.00",
+    "100%",
+    "Text with _underscores_",
+    "Text with ^carets^",
+    "Both $price and _underscores_",
+    "Complex $alpha$ and $beta$",
+    "Mix of € and £ symbols"
+]
+
+plt.figure(figsize=(12, 8))
+for i, s in enumerate(test_strings):
+    plt.text(0.1, 0.9 - (i * 0.1), s, fontsize=12)
+plt.title("Testing various problematic strings")
+plt.xlim(0, 1)
+plt.ylim(0, 1)
+plt.axis('off')
+plt.savefig('test_string_rendering.png')
+plt.close()
+
+print("All tests completed successfully!")
