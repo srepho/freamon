@@ -52,9 +52,28 @@ logger.setLevel(logging.INFO)
 class AutoModelFlow:
     """Automated modeling workflow for text, tabular, and time series data.
     
-    This class provides high-level functions to automatically analyze a dataset,
-    detect features that need special processing (text, time, etc.), and build
-    an optimized model with proper cross-validation.
+    This class provides an end-to-end automated machine learning framework that:
+    1. Analyzes datasets to identify different types of features (text, categorical, numeric, date)
+    2. Applies intelligent preprocessing for each column type:
+       - Text columns: Topic modeling with automatic topic number detection, feature extraction
+       - Date columns: Time series feature engineering (lags, rolling statistics, date components)
+       - Categorical columns: Encoding
+    3. Selects appropriate cross-validation strategy (time series CV or standard CV)
+    4. Performs hyperparameter tuning and model training
+    5. Provides evaluation, visualization, and interpretation tools
+    
+    The class is designed to simplify building ML pipelines for complex datasets that contain
+    a mixture of text data, structured features, and time series, requiring minimal code while
+    still offering fine-grained control through configuration options.
+    
+    Key Features:
+    - Automatic column type detection and appropriate processing
+    - Intelligent text processing with topic modeling
+    - Time series feature engineering for temporal data
+    - Appropriate cross-validation strategies based on data type
+    - Built-in visualization for model evaluation and feature importance
+    - Support for classification and regression problems
+    - Integration with multiple model types (LightGBM, XGBoost, CatBoost, scikit-learn)
     """
     
     def __init__(
@@ -212,33 +231,126 @@ class AutoModelFlow:
         feature_selection_options: Optional[Dict[str, Any]] = None,
         tuning_options: Optional[Dict[str, Any]] = None
     ) -> 'AutoModelFlow':
-        """Fit an automated model on the provided dataset.
+        """Fit an automated machine learning model on the provided dataset.
         
-        This function handles the complete modeling flow:
-        1. Analyzes the dataset structure
-        2. Processes text columns (topic modeling, statistics, etc.)
-        3. Creates time series features if applicable
-        4. Trains a model with appropriate cross-validation
-        5. Evaluates and returns metrics
+        This method implements the complete end-to-end modeling workflow:
+        1. Analyzes the dataset structure to identify column types
+        2. Processes text columns with topic modeling and extracts features
+        3. Creates time series features from date columns if applicable
+        4. Encodes categorical features
+        5. Selects and trains an appropriate model with cross-validation
+        6. Tunes hyperparameters if requested
+        7. Calculates feature importance and evaluation metrics
         
         Args:
-            df: Input DataFrame
-            target_column: Name of target column
-            date_column: Name of main date/time column for time series analysis
-            text_columns: List of text column names (if None, will be auto-detected)
-            categorical_columns: List of categorical column names (if None, will be auto-detected)
-            ignore_columns: List of columns to ignore
-            validation_size: Proportion of data to use for validation
-            cv_folds: Number of cross-validation folds
-            metrics: List of metrics to compute
-            model_params: Parameters for the model
-            text_processing_options: Options for text processing
-            time_series_options: Options for time series feature creation
-            feature_selection_options: Options for feature selection
-            tuning_options: Options for hyperparameter tuning
+            df (pd.DataFrame): Input DataFrame containing both features and target column
+            
+            target_column (str): Name of the column to predict. Must exist in df.
+            
+            date_column (Optional[str]): Name of the primary date/time column for temporal data.
+                If provided, will enable time series feature engineering and time-based 
+                cross-validation. Should be in datetime format or convertible to datetime.
+            
+            text_columns (Optional[List[str]]): List of column names containing text data.
+                If None, text columns will be auto-detected based on content characteristics.
+                Each text column will be processed with topic modeling and feature extraction.
+            
+            categorical_columns (Optional[List[str]]): List of column names containing categorical data.
+                If None, categorical columns will be auto-detected based on cardinality and type.
+                Will be one-hot encoded during modeling.
+            
+            ignore_columns (Optional[List[str]]): List of column names to exclude from analysis.
+                These columns will be ignored during all processing steps.
+            
+            validation_size (float): Proportion of data to use for validation when performing
+                train/test splitting. Only used when not using cross-validation. Default: 0.2.
+            
+            cv_folds (int): Number of cross-validation folds. For time series data, will use
+                time-based splitting to avoid data leakage. Default: 5.
+            
+            metrics (Optional[List[str]]): List of evaluation metrics to compute.
+                If None, defaults based on problem_type:
+                - Classification: ["accuracy", "precision", "recall", "f1", "roc_auc"]
+                - Regression: ["mse", "rmse", "mae", "r2"]
+            
+            model_params (Optional[Dict[str, Any]]): Parameters to pass to the underlying model.
+                Only used if hyperparameter_tuning=False. If None, default parameters will be used
+                based on the model_type and problem_type.
+            
+            text_processing_options (Optional[Dict[str, Any]]): Configuration options for text processing:
+                - topic_modeling (Dict): Options for topic modeling
+                    - method (str): 'nmf' or 'lda'
+                    - auto_topics_range (Tuple[int, int]): Range of topics to try
+                    - auto_topics_method (str): 'coherence' or 'stability'
+                - text_features (Dict): Options for text feature extraction
+                    - extract_features (bool): Whether to extract additional features
+                    - include_stats (bool): Whether to include statistical features
+                    - include_readability (bool): Whether to include readability metrics
+                    - include_sentiment (bool): Whether to include sentiment analysis
+                    - extract_keywords (bool): Whether to extract and use keywords
+            
+            time_series_options (Optional[Dict[str, Any]]): Configuration for time series features:
+                - create_target_lags (bool): Whether to create lag features of the target
+                - lag_periods (List[int]): List of periods for creating lag features
+                - rolling_windows (List[int]): List of window sizes for rolling statistics
+                - include_numeric_columns (bool): Whether to create features for numeric columns
+                - numeric_lags (List[int]): Periods for numeric column lags
+                - numeric_rolling_windows (List[int]): Windows for numeric rolling stats
+            
+            feature_selection_options (Optional[Dict[str, Any]]): Configuration for feature selection:
+                - method (str): Feature selection method to use
+                - n_features (int): Number of features to select
+                - scoring (str): Metric to use for feature selection
+            
+            tuning_options (Optional[Dict[str, Any]]): Configuration for hyperparameter tuning:
+                - n_trials (int): Number of hyperparameter tuning trials
+                - timeout (Optional[int]): Timeout in seconds for tuning
+                - eval_metric (str): Metric to optimize during tuning
+                - early_stopping_rounds (int): Number of rounds without improvement before stopping
             
         Returns:
-            self: The fitted AutoModelFlow instance
+            AutoModelFlow: The fitted AutoModelFlow instance with trained model, 
+                feature importance, and evaluation metrics.
+                
+        Raises:
+            ValueError: If target_column or date_column (if specified) are not found in df
+            
+        Examples:
+        ---------
+        # Basic classification model
+        >>> model_flow = AutoModelFlow(model_type='lightgbm', problem_type='classification')
+        >>> model_flow.fit(df=customer_data, target_column='churn')
+        >>> predictions = model_flow.predict(new_customers)
+        
+        # Time series forecasting with custom features
+        >>> model_flow = AutoModelFlow(model_type='lightgbm', problem_type='regression')
+        >>> model_flow.fit(
+        ...     df=sales_data,
+        ...     target_column='weekly_sales',
+        ...     date_column='date',
+        ...     time_series_options={
+        ...         'lag_periods': [1, 2, 4, 8, 12],  # Weekly, bi-weekly, monthly, etc.
+        ...         'rolling_windows': [4, 12, 26]    # Monthly, quarterly, semi-annual
+        ...     }
+        ... )
+        
+        # Text classification with custom processing
+        >>> model_flow = AutoModelFlow()
+        >>> model_flow.fit(
+        ...     df=document_data,
+        ...     target_column='category',
+        ...     text_columns=['title', 'body'],
+        ...     text_processing_options={
+        ...         'topic_modeling': {
+        ...             'method': 'nmf',
+        ...             'auto_topics_method': 'stability'
+        ...         },
+        ...         'text_features': {
+        ...             'include_sentiment': True,
+        ...             'extract_keywords': True
+        ...         }
+        ...     }
+        ... )
         """
         logger.info(f"Starting automated modeling flow with {self.model_type} for {self.problem_type}")
         
@@ -360,13 +472,27 @@ class AutoModelFlow:
         return self.model.predict_proba(X)
     
     def plot_metrics(self, figsize: Tuple[int, int] = (12, 8)) -> plt.Figure:
-        """Plot cross-validation metrics.
+        """Plot cross-validation metrics from model training with error bars.
+        
+        This method visualizes the cross-validation metrics computed during model training,
+        showing both the mean performance and variance across folds. This helps assess
+        model stability and reliability.
         
         Args:
-            figsize: Figure size as (width, height)
+            figsize (Tuple[int, int]): Figure size as (width, height) in inches.
+                Default is (12, 8) for a readable visualization.
             
         Returns:
-            Figure object
+            plt.Figure: Matplotlib Figure object containing the visualization.
+                The figure can be further customized or saved.
+                
+        Raises:
+            ValueError: If no cross-validation results are available (model not fitted).
+            
+        Example:
+            >>> model = AutoModelFlow().fit(df, 'target', metrics=['accuracy', 'f1', 'precision'])
+            >>> fig = model.plot_metrics()
+            >>> fig.savefig('cv_metrics.png', dpi=300)  # Save high-resolution image
         """
         if self.cv_results is None:
             raise ValueError("No cross-validation results available. Call fit() first.")
@@ -378,14 +504,41 @@ class AutoModelFlow:
         top_n: int = 20, 
         figsize: Tuple[int, int] = (12, 8)
     ) -> plt.Figure:
-        """Plot feature importance.
+        """Plot feature importance to visualize which features most influence the model.
+        
+        This method creates a bar chart showing the most influential features in the model,
+        ordered by importance. For tree-based models (LightGBM, XGBoost), this represents
+        the gain or information value of each feature. This visualization helps understand
+        which features (including automatically generated text topics and time series features)
+        drive the model's predictions.
         
         Args:
-            top_n: Number of top features to show
-            figsize: Figure size as (width, height)
+            top_n (int): Number of top features to display. Default is 20.
+                Set to a smaller value for cleaner visualization or a larger value
+                to see more features.
+            figsize (Tuple[int, int]): Figure size as (width, height) in inches.
+                Default is (12, 8) for a readable visualization.
             
         Returns:
-            Figure object
+            plt.Figure: Matplotlib Figure object containing the visualization.
+                The figure can be further customized or saved.
+                
+        Raises:
+            ValueError: If no feature importance is available (model not fitted).
+            
+        Example:
+            >>> model = AutoModelFlow().fit(df, 'target')
+            >>> # Plot top 15 most important features
+            >>> fig = model.plot_importance(top_n=15, figsize=(10, 6))
+            >>> fig.savefig('feature_importance.png')
+            
+        Note:
+            For text columns, feature names will be prefixed with the column name
+            followed by a topic number (e.g., 'description_Topic_1') or text feature
+            type (e.g., 'description_word_count').
+            
+            For time series features, names will include the source column and feature
+            type (e.g., 'sales_lag_7', 'date_month').
         """
         if self.feature_importance is None:
             raise ValueError("No feature importance available. Call fit() first.")
@@ -402,15 +555,49 @@ class AutoModelFlow:
         figsize: Tuple[int, int] = (15, 8),
         date_format: str = '%Y-%m-%d'
     ) -> plt.Figure:
-        """Plot predictions over time.
+        """Plot model predictions over time compared to actual values.
+        
+        This method creates a time series visualization that shows both the actual values
+        and model predictions over time. This is particularly useful for time series
+        forecasting and regression tasks to visualize how well the model captures
+        trends, seasonality, and specific events.
         
         Args:
-            df: DataFrame with the same structure as training data
-            figsize: Figure size as (width, height)
-            date_format: Format for date display
+            df (pd.DataFrame): DataFrame containing test or validation data.
+                Must include:
+                - The date column specified during model fitting
+                - The target column with actual values
+                - All feature columns needed for prediction
+            figsize (Tuple[int, int]): Figure size as (width, height) in inches.
+                Default is (15, 8) which provides good visibility of temporal patterns.
+            date_format (str): Format string for date labels on the x-axis.
+                Default is '%Y-%m-%d'. Common alternatives:
+                - '%Y-%m': Year-Month
+                - '%b %Y': Month name and year
+                - '%d %b': Day and month name
+                - '%H:%M:%S': Hour-minute-second
             
         Returns:
-            Figure object
+            plt.Figure: Matplotlib Figure object containing the visualization.
+                The figure shows two lines:
+                - Blue line: Actual values from the target column
+                - Red dashed line: Model predictions
+                
+        Raises:
+            ValueError: If no date column was specified during model fitting.
+            
+        Example:
+            >>> # Fit model on historical sales data
+            >>> model = AutoModelFlow(problem_type='regression')
+            >>> model.fit(train_df, target_column='sales', date_column='date')
+            >>>
+            >>> # Visualize predictions on test data
+            >>> fig = model.plot_predictions_over_time(test_df)
+            >>> fig.savefig('sales_forecast.png')
+            
+        Note:
+            The date column must be in datetime format or convertible to datetime.
+            The dataframe will be automatically sorted by the date column before plotting.
         """
         if not self.date_column:
             raise ValueError("No date column specified. This method is only for time series data.")
@@ -433,14 +620,34 @@ class AutoModelFlow:
         )
     
     def get_topic_terms(self, text_column: str, n_terms: int = 10) -> Dict[int, List[str]]:
-        """Get the terms for each topic in a text column.
+        """Get the most representative terms for each topic in a text column.
+        
+        This method returns the top terms for each topic discovered during topic modeling
+        of the specified text column. These terms provide insight into the semantic
+        meaning of each automatically detected topic.
         
         Args:
-            text_column: Name of the text column
-            n_terms: Number of terms to return per topic
+            text_column (str): Name of the text column for which to retrieve topics.
+                Must be a column that was processed during fit().
+            n_terms (int): Number of representative terms to return for each topic.
+                Default is 10 terms per topic.
             
         Returns:
-            Dictionary mapping topic IDs to lists of terms
+            Dict[int, List[str]]: Dictionary mapping topic IDs (0-based) to lists of 
+                their most representative terms, ordered by importance.
+                
+        Raises:
+            ValueError: If the specified text_column was not processed during fitting
+                or doesn't have topic information available.
+                
+        Example:
+            >>> model = AutoModelFlow().fit(df, 'target', text_columns=['description'])
+            >>> topics = model.get_topic_terms('description', n_terms=5)
+            >>> for topic_id, terms in topics.items():
+            ...     print(f"Topic {topic_id + 1}: {', '.join(terms)}")
+            Topic 1: finance, banking, markets, investment, stocks
+            Topic 2: sports, football, player, team, game
+            ...
         """
         if text_column not in self.text_topics:
             raise ValueError(f"No topic model found for column '{text_column}'")
@@ -455,14 +662,43 @@ class AutoModelFlow:
         return topics
     
     def get_document_topics(self, df: pd.DataFrame, text_column: str) -> pd.DataFrame:
-        """Get topic distributions for documents in a specific text column.
+        """Get topic distributions for new documents in a specific text column.
+        
+        This method applies the previously trained topic model to new text data,
+        returning the distribution of topics for each document. This allows you to
+        understand the thematic composition of new documents using the topics
+        discovered during training.
+        
+        The returned DataFrame contains one row per input document and one column
+        per topic, with values representing the strength of each topic in that document
+        (higher values indicate stronger presence of the topic).
         
         Args:
-            df: DataFrame containing the text column
-            text_column: Name of the text column
+            df (pd.DataFrame): DataFrame containing the text column to analyze.
+                Must contain the specified text_column.
+            text_column (str): Name of the text column to process.
+                Must be a column that was processed during fit().
             
         Returns:
-            DataFrame with document-topic distributions
+            pd.DataFrame: DataFrame with document-topic distributions.
+                - Index matches the original DataFrame
+                - Columns are named "Topic 1", "Topic 2", etc.
+                - Values represent topic weights for each document (0.0 to 1.0)
+                
+        Raises:
+            ValueError: If the specified text_column was not processed during fitting
+                or doesn't have topic information available.
+                
+        Example:
+            >>> model = AutoModelFlow().fit(train_df, 'target', text_columns=['description'])
+            >>> # Get topic distributions for new documents
+            >>> new_docs = pd.DataFrame({'description': ["Financial markets report", 
+            ...                                         "Sports game highlights"]})
+            >>> topic_dist = model.get_document_topics(new_docs, 'description')
+            >>> print(topic_dist)
+               Topic 1  Topic 2  Topic 3  ...
+            0     0.82     0.05     0.13  ...
+            1     0.07     0.75     0.18  ...
         """
         if text_column not in self.text_topics:
             raise ValueError(f"No topic model found for column '{text_column}'")
@@ -591,14 +827,39 @@ class AutoModelFlow:
         return date_columns
     
     def _process_text_columns(self, df: pd.DataFrame, options: Dict[str, Any]) -> pd.DataFrame:
-        """Process text columns with topic modeling and feature extraction.
+        """Process text columns with topic modeling and comprehensive feature extraction.
+        
+        This method applies advanced text processing to each text column:
+        1. Performs automatic topic modeling to discover underlying themes
+        2. Creates document-topic distributions as features
+        3. Extracts text statistics (length, word count, etc.)
+        4. Calculates readability metrics
+        5. Performs sentiment analysis
+        6. Extracts and counts significant keywords
+        
+        All extracted features are added as new columns to the dataframe with appropriate
+        prefixes to identify their source column.
         
         Args:
-            df: Input DataFrame
-            options: Text processing options
+            df (pd.DataFrame): Input DataFrame containing text columns
+            options (Dict[str, Any]): Text processing configuration options including:
+                - topic_modeling (Dict): Configuration for topic modeling
+                    - method (str): 'nmf' or 'lda' algorithm to use
+                    - auto_topics_range (Tuple[int,int]): Range of topics to try
+                    - auto_topics_method (str): Method for automatic topic selection
+                - text_features (Dict): Configuration for feature extraction
+                    - extract_features (bool): Whether to extract additional text features
+                    - include_stats (bool): Whether to include statistical features
+                    - include_readability (bool): Whether to include readability metrics 
+                    - include_sentiment (bool): Whether to include sentiment analysis
+                    - extract_keywords (bool): Whether to extract keyword features
             
         Returns:
-            DataFrame with processed text features
+            pd.DataFrame: The original dataframe augmented with text-derived features
+            
+        Note:
+            This method stores the fitted topic models and processors in self.text_topics
+            and self.text_features for later use during prediction.
         """
         logger.info("Processing text columns...")
         
@@ -1289,29 +1550,113 @@ def auto_model(
 ) -> Dict[str, Any]:
     """Automated modeling function for tabular, text, and time series data.
     
-    This function automatically analyzes a dataset, processes text and date features,
-    trains a model with cross-validation, and returns comprehensive results.
+    This function provides a simplified interface to the AutoModelFlow class, automatically
+    handling the complete modeling workflow from data analysis to model training and evaluation.
+    It intelligently processes different types of features (text, categorical, date/time) and
+    selects appropriate methods based on the data characteristics.
+    
+    The function performs the following steps:
+    1. Analyzes the dataset to identify column types
+    2. Processes text columns with topic modeling and feature extraction
+    3. Creates time series features if date column is provided
+    4. Trains a model with appropriate cross-validation (time series CV for temporal data)
+    5. Performs hyperparameter tuning if requested
+    6. Evaluates model performance with multiple metrics
+    7. Extracts feature importance
     
     Args:
-        df: Input DataFrame
-        target_column: Name of target column
-        date_column: Name of main date/time column for time series analysis (optional)
-        model_type: Type of model to use ('lightgbm', 'xgboost', 'catboost', 'sklearn')
-        problem_type: Type of problem ('classification', 'regression')
-        text_columns: List of text column names (if None, will be auto-detected)
-        categorical_columns: List of categorical column names (if None, will be auto-detected)
-        cv_folds: Number of cross-validation folds
-        metrics: List of metrics to compute
-        tuning: Whether to perform hyperparameter tuning
-        **kwargs: Additional options for AutoModelFlow
+        df (pd.DataFrame): Input DataFrame containing all features and target
+        target_column (str): Name of the target column to predict
+        date_column (Optional[str]): Name of main date/time column for time series analysis.
+            If provided, time series features and time-based cross-validation will be used.
+        model_type (str): Type of model to use:
+            - 'lightgbm': LightGBM (default, good for most tasks)
+            - 'xgboost': XGBoost
+            - 'catboost': CatBoost
+            - 'sklearn': Generic scikit-learn model
+        problem_type (str): Type of prediction problem:
+            - 'classification': For predicting categorical targets
+            - 'regression': For predicting continuous targets
+        text_columns (Optional[List[str]]): List of text column names to process with topic modeling.
+            If None, will be auto-detected based on text characteristics.
+        categorical_columns (Optional[List[str]]): List of categorical column names.
+            If None, will be auto-detected based on cardinality.
+        cv_folds (int): Number of cross-validation folds
+        metrics (Optional[List[str]]): List of metrics to compute during evaluation.
+            If None, default metrics will be selected based on problem_type:
+            - Classification: ["accuracy", "precision", "recall", "f1", "roc_auc"]
+            - Regression: ["mse", "rmse", "mae", "r2"]
+        tuning (bool): Whether to perform hyperparameter tuning (default=True)
+        **kwargs: Additional options including:
+            - random_state (int): Random seed for reproducibility
+            - verbose (bool): Whether to print progress information
+            - ignore_columns (List[str]): Columns to ignore during processing
+            - model_params (Dict[str, Any]): Parameters for the model if not using tuning
+            - text_options (Dict[str, Any]): Options for text processing, including:
+                - topic_modeling (Dict): Options for topic modeling
+                - text_features (Dict): Options for text feature extraction
+            - time_options (Dict[str, Any]): Options for time series feature creation, including:
+                - lag_periods (List[int]): Periods for lag features
+                - rolling_windows (List[int]): Window sizes for rolling statistics
+            - tuning_options (Dict[str, Any]): Options for hyperparameter tuning, including:
+                - n_trials (int): Number of tuning trials
+                - eval_metric (str): Metric to optimize
+                - early_stopping_rounds (int): Patience for early stopping
             
     Returns:
-        Dictionary with modeling results including:
-        - model: The trained model
-        - metrics: Cross-validation metrics
-        - feature_importance: Feature importance
-        - text_topics: Topic models for text columns
-        - dataset_info: Information about the dataset
+        Dict[str, Any]: Dictionary with comprehensive modeling results:
+            - model: The trained model ready for predictions
+            - metrics: Dictionary of cross-validation metrics (mean and std for each metric)
+            - feature_importance: DataFrame with feature importance scores
+            - text_topics: Dictionary of topic models for each text column
+            - autoflow: The full AutoModelFlow instance for additional operations
+            - dataset_info: Dictionary with information about the analyzed dataset
+    
+    Examples:
+    ---------
+    # Basic classification with automatic feature detection
+    >>> from freamon.modeling import auto_model
+    >>> results = auto_model(
+    ...     df=train_df,
+    ...     target_column='is_fraudulent',
+    ...     problem_type='classification'
+    ... )
+    >>> # Make predictions on new data
+    >>> predictions = results['model'].predict(test_df)
+    
+    # Time series forecasting with custom options
+    >>> results = auto_model(
+    ...     df=historical_data, 
+    ...     target_column='sales',
+    ...     date_column='date',
+    ...     problem_type='regression',
+    ...     time_options={
+    ...         'lag_periods': [1, 7, 14, 28],  # Daily, weekly, bi-weekly, monthly lags
+    ...         'rolling_windows': [7, 14, 30]   # Weekly, bi-weekly, monthly rolling stats
+    ...     },
+    ...     metrics=['rmse', 'mae']
+    ... )
+    >>> # Plot predictions over time
+    >>> results['autoflow'].plot_predictions_over_time(test_df)
+    
+    # Text classification with topic modeling
+    >>> results = auto_model(
+    ...     df=document_df,
+    ...     target_column='category',
+    ...     text_columns=['content', 'title'],
+    ...     text_options={
+    ...         'topic_modeling': {
+    ...             'method': 'nmf',
+    ...             'auto_topics_range': (2, 20),
+    ...             'auto_topics_method': 'stability'
+    ...         }
+    ...     }
+    ... )
+    >>> # Examine topics found in the text
+    >>> for column, topic_info in results['text_topics'].items():
+    ...     print(f"\nTopics in '{column}':")
+    ...     for topic_idx, terms in topic_info['topics']:
+    ...         print(f"Topic {topic_idx+1}: {', '.join(terms[:7])}")
     """
     # Create AutoModelFlow
     autoflow = AutoModelFlow(

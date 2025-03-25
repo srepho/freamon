@@ -593,7 +593,7 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
                                auto_topics_range=(2, 15), auto_topics_method='coherence'):
     """
     Optimized topic modeling workflow with enhanced text preprocessing, deduplication,
-    and smart sampling for large datasets up to 100K rows.
+    automatic topic number detection, and smart sampling for large datasets up to 100K rows.
     
     Parameters:
     -----------
@@ -603,9 +603,13 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
         Name of the column containing text to analyze
     n_topics : int or str, default='auto'
         Number of topics to extract. If 'auto', the optimal number of topics
-        will be determined automatically using coherence scores.
+        will be determined automatically using coherence or stability metrics.
+        - If int: Uses the specified fixed number of topics
+        - If 'auto': Automatically determines the optimal number within auto_topics_range
     method : str, default='nmf'
         Topic modeling method ('nmf' or 'lda')
+        - 'nmf': Non-negative Matrix Factorization (usually better for shorter texts)
+        - 'lda': Latent Dirichlet Allocation (usually better for longer documents)
     preprocessing_options : dict, default=None
         Options for text preprocessing:
         - 'enabled': bool, whether to perform preprocessing (default: True)
@@ -638,20 +642,75 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
     anonymization_config : dict, default=None
         Configuration options for Allyanonimiser (e.g., patterns to use, replacement strategy)
     auto_topics_range : tuple, default=(2, 15)
-        Range of topic numbers to try when using automatic topic number detection
+        Range of topic numbers to try when using automatic topic number detection (min, max).
+        Only used when n_topics='auto'. For example, (2, 15) will try 2, 3, 4, ..., 15 topics.
     auto_topics_method : str, default='coherence'
-        Method to use for automatic topic number detection: 'coherence' or 'stability'
+        Method to use for automatic topic number detection: 
+        - 'coherence': Select topics with highest semantic coherence (measures how related words
+                      in a topic are to each other)
+        - 'stability': Select topics based on both coherence and topic distinctiveness
+                      (higher scores for topics that are coherent but not overlapping)
         
     Returns:
     --------
     dict
         Dictionary containing:
         - 'topic_model': Dictionary with the trained model and topics
+            - 'model': The actual NMF or LDA model
+            - 'vectorizer': The vectorizer used to create document-term matrix
+            - 'feature_names': List of terms (features) used in the model
+            - 'n_topics': Number of topics used in the model
+            - 'method': Method used ('nmf' or 'lda')
+            - 'topic_term_matrix': Matrix of topic-term weights
+            - 'coherence_score': Overall topic coherence score
         - 'document_topics': DataFrame with document-topic distributions
+            Each row corresponds to a document, columns are 'Topic 1', 'Topic 2', etc.
         - 'topics': List of (topic_idx, words) tuples 
+            For each topic, contains the topic index and list of top words
         - 'processing_info': Dict with processing statistics
-        - 'deduplication_map': Dict mapping deduplicated to original indices (if return_original_mapping=True)
-        - 'topic_selection': Dict with topic selection metrics (if n_topics='auto')
+            Information about preprocessing, deduplication, sampling, etc.
+        - 'deduplication_map': Dict mapping deduplicated to original indices
+            Only included if return_original_mapping=True
+        - 'topic_selection': Dict with topic selection metrics
+            Only included if n_topics='auto', contains:
+            - 'method': Method used for selection ('coherence' or 'stability')
+            - 'topic_range': List of topic numbers evaluated
+            - 'coherence_scores': List of coherence scores for each topic number
+            - 'stability_scores': List of stability scores (if method='stability')
+            - 'best_n_topics': Selected optimal number of topics
+            - 'selection_time': Time taken for topic selection (seconds)
+            
+    Examples:
+    ---------
+    >>> import pandas as pd
+    >>> from freamon.utils.text_utils import create_topic_model_optimized
+    >>> 
+    >>> # Sample data with text
+    >>> data = pd.DataFrame({
+    >>>     'text': ['This is about sports and games', 
+    >>>              'Economic policy and finance news',
+    >>>              'Sports events and athletes', 
+    >>>              'Financial markets and trading']
+    >>> })
+    >>> 
+    >>> # Using automatic topic detection (default)
+    >>> results = create_topic_model_optimized(
+    >>>     df=data,
+    >>>     text_column='text',
+    >>>     n_topics='auto',  # Auto-detect optimal number of topics
+    >>>     auto_topics_range=(2, 5),  # Try between 2-5 topics
+    >>>     auto_topics_method='coherence'  # Use coherence-based selection
+    >>> )
+    >>> 
+    >>> # Get optimal number of topics chosen
+    >>> print(f"Optimal number of topics: {results['topic_model']['n_topics']}")
+    >>> 
+    >>> # Print top words for each topic
+    >>> for topic_idx, words in results['topics']:
+    >>>     print(f"Topic {topic_idx+1}: {', '.join(words[:5])}")
+    >>> 
+    >>> # Get document-topic distributions
+    >>> print(results['document_topics'].head())
     """
     import multiprocessing
     
