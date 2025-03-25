@@ -71,6 +71,53 @@ analyzer.run_full_analysis()
 detected_types = analyzer.analysis_results["basic_stats"]["detected_types"]
 ```
 
+## HTML Report Generation
+
+The `DataTypeDetector` can generate HTML reports for visualization and analysis of detected data types.
+
+### Saving an HTML Report to File
+
+```python
+from freamon.utils.datatype_detector import DataTypeDetector
+
+detector = DataTypeDetector(df)
+detector.detect_all_types()
+
+# Save HTML report to a file
+report_path = detector.save_html_report("datatype_report.html", include_stats=True)
+print(f"Report saved to: {report_path}")
+```
+
+The HTML report includes:
+- Color-coded tables of detected types
+- Storage types and logical types for each column
+- Semantic type detection results
+- Conversion suggestions
+- Statistical information (optional)
+
+### Customizing HTML Reports
+
+You can also get the HTML content as a string for further customization:
+
+```python
+# Get HTML content
+html_content = detector.get_column_report_html()
+
+# Customize the HTML content
+custom_html = html_content.replace("<title>DataType Detection Report</title>", 
+                                  "<title>Custom Data Type Report</title>")
+
+# Save the customized content
+with open("custom_report.html", "w") as f:
+    f.write(custom_html)
+```
+
+This allows you to:
+- Add custom headers or footers
+- Embed the report in other HTML documents
+- Modify styling or content before saving
+- Integrate with web applications
+
 ## Available Features
 
 ### Logical Type Detection
@@ -154,6 +201,12 @@ types = detector.detect_all_types()
 
 # Get a detailed report
 report = detector.get_column_report()
+
+# Generate an HTML report
+html_report = detector.get_column_report_html()
+
+# Save HTML report to a file
+report_path = detector.save_html_report("detection_report.html", include_stats=True)
 
 # Convert types based on suggestions
 converted_df = detector.convert_types()

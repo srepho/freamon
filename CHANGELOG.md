@@ -1,5 +1,15 @@
 # Changelog
 
+## Version 0.3.25 - Optimized Topic Modeling
+- Added create_topic_model_optimized() method to TextProcessor class
+- Implemented automatic deduplication in topic modeling workflow
+- Added smart sampling for large datasets with full dataset topic mapping
+- Incorporated batch processing with progress reporting
+- Created example script demonstrating optimized topic modeling approach
+- Added comprehensive documentation for using optimized topic modeling
+- Significantly improved performance for large text datasets
+- Simplified user experience with one-line topic modeling API
+
 ## Version 0.3.24 - HTML Report Generation for DataTypeDetector
 - Added save_html_report() method to DataTypeDetector for generating HTML reports
 - Added get_column_report_html() method to get HTML content as a string
@@ -7,6 +17,7 @@
 - Added styling for semantic types, null percentages, and conversions
 - Included detailed statistical information in reports
 - Added timestamp and summary information in generated reports
+- Added comprehensive unit tests for HTML report functionality
 - Improved documentation with examples for HTML report generation
 
 ## Version 0.3.23 - Automatic Matplotlib Character Fixes

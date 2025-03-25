@@ -13,9 +13,19 @@ import base64
 import os
 import tempfile
 import urllib.request
+import time
 
 import numpy as np
 import pandas as pd
+
+# Import for optimized topic modeling
+try:
+    from freamon.deduplication.exact_deduplication import deduplicate_exact
+except ImportError:
+    # Fallback for when deduplication module is not available
+    def deduplicate_exact(df, col, method='hash', keep='first'):
+        warnings.warn("Deduplication module not available, skipping deduplication")
+        return df
 
 
 class TextProcessor:
@@ -2705,5 +2715,201 @@ class TextProcessor:
                 
             except Exception as e:
                 warnings.warn(f"Error creating embedding features: {str(e)}. Skipping embeddings.")
+        
+        return result
+        
+    def create_topic_model_optimized(self, df: pd.DataFrame, text_column: str, n_topics: int = 5, 
+                                   method: str = 'nmf', use_lemmatization: bool = True, 
+                                   max_docs: Optional[int] = None, remove_duplicates: bool = True,
+                                   return_full_data: bool = True) -> Dict:
+        """
+        Optimized topic modeling workflow that handles preprocessing, deduplication,
+        and smart sampling automatically.
+        
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            DataFrame containing the text data
+        text_column : str
+            Name of the column containing text to analyze
+        n_topics : int, default=5
+            Number of topics to extract
+        method : str, default='nmf'
+            Topic modeling method ('nmf' or 'lda')
+        use_lemmatization : bool, default=True
+            Whether to use lemmatization (requires spaCy)
+        max_docs : int, default=None
+            Maximum number of documents to process (None = use all if < 10000, else use 10000)
+        remove_duplicates : bool, default=True
+            Whether to remove duplicate documents before processing
+        return_full_data : bool, default=True
+            Whether to return topic distributions for all documents, not just the sample
+            
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'topic_model': Dictionary with the trained model and topics
+            - 'document_topics': DataFrame with document-topic distributions
+            - 'topics': List of (topic_idx, words) tuples
+            - 'processing_info': Dict with processing statistics
+        """
+        # Setup the processor
+        if use_lemmatization and not self.use_spacy:
+            warnings.warn("Lemmatization requested but spaCy not enabled. "
+                         "Setting use_lemmatization=False.")
+            use_lemmatization = False
+            
+        # Initialize tracking info
+        processing_info = {
+            'original_doc_count': len(df),
+            'processed_doc_count': len(df),
+            'duplicates_removed': 0,
+            'sampled': False,
+            'sample_size': len(df),
+            'used_lemmatization': use_lemmatization
+        }
+        
+        # Make a copy to avoid modifying the original
+        working_df = df.copy()
+        
+        # Step 1: Optional deduplication
+        if remove_duplicates:
+            print(f"Removing duplicate documents from {len(working_df)} documents...")
+            start_time = time.time()
+            deduped_df = deduplicate_exact(working_df, col=text_column, method='hash', keep='first')
+            elapsed = time.time() - start_time
+            
+            processing_info['duplicates_removed'] = len(working_df) - len(deduped_df)
+            working_df = deduped_df
+            processing_info['processed_doc_count'] = len(working_df)
+            
+            print(f"Removed {processing_info['duplicates_removed']} duplicates "
+                  f"in {elapsed:.2f} seconds. {len(working_df)} documents remaining.")
+            
+        # Step 2: Smart sampling for very large datasets
+        if max_docs is None:
+            # Default behavior: process all docs if <10K, otherwise sample 10K
+            max_docs = 10000
+            
+        if len(working_df) > max_docs:
+            processing_info['sampled'] = True
+            processing_info['sample_size'] = max_docs
+            print(f"Dataset has {len(working_df)} documents, sampling {max_docs} for topic modeling...")
+            sample_df = working_df.sample(max_docs, random_state=42)
+        else:
+            sample_df = working_df
+        
+        # Step 3: Preprocess texts (with progress reporting)
+        print(f"Preprocessing {len(sample_df)} documents...")
+        start_time = time.time()
+        
+        # Process in batches for better progress reporting
+        batch_size = max(1, min(1000, len(sample_df) // 10))
+        cleaned_texts = []
+        
+        for i in range(0, len(sample_df), batch_size):
+            batch = sample_df.iloc[i:i+batch_size]
+            batch_texts = batch[text_column].tolist()
+            
+            # Process batch
+            processed_batch = [self.preprocess_text(
+                text, 
+                remove_stopwords=True, 
+                remove_punctuation=True,
+                lemmatize=use_lemmatization
+            ) for text in batch_texts]
+            
+            cleaned_texts.extend(processed_batch)
+            
+            # Report progress
+            progress = min(100, (i + len(batch)) * 100 // len(sample_df))
+            elapsed = time.time() - start_time
+            print(f"  Progress: {progress}% ({i + len(batch)}/{len(sample_df)}) - {elapsed:.1f}s", end='\r')
+        
+        print(f"Preprocessing completed in {time.time() - start_time:.2f} seconds                      ")
+        
+        # Step 4: Create the topic model
+        print(f"Creating {method.upper()} topic model with {n_topics} topics...")
+        start_time = time.time()
+        
+        topic_model = self.create_topic_model(
+            texts=cleaned_texts,
+            n_topics=n_topics,
+            method=method,
+            max_features=min(1000, len(cleaned_texts) // 2),
+            max_df=0.7,
+            min_df=3,
+            ngram_range=(1, 2),
+            random_state=42
+        )
+        
+        elapsed = time.time() - start_time
+        print(f"Created topic model in {elapsed:.2f} seconds")
+        
+        # Step 5: Get document-topic distribution for the sample
+        doc_topics = self.get_document_topics(topic_model)
+        
+        # Set the index to match the sample dataframe
+        doc_topics.index = sample_df.index
+        
+        # Step 6: If requested and we've sampled, process the full dataset
+        if return_full_data and processing_info['sampled']:
+            print("Generating topic distributions for all documents...")
+            
+            # First, create a mapping to store all results
+            all_doc_topics = pd.DataFrame(index=working_df.index)
+            
+            # Add the sample results we already calculated
+            for col in doc_topics.columns:
+                all_doc_topics.loc[sample_df.index, col] = doc_topics[col].values
+            
+            # Process remaining documents in batches
+            remaining_idx = working_df.index.difference(sample_df.index)
+            remaining_df = working_df.loc[remaining_idx]
+            
+            if len(remaining_df) > 0:
+                batch_size = max(1, min(1000, len(remaining_df) // 10))
+                start_time = time.time()
+                
+                for i in range(0, len(remaining_df), batch_size):
+                    batch = remaining_df.iloc[i:i+batch_size]
+                    
+                    # Preprocess batch
+                    batch_texts = [self.preprocess_text(
+                        text, 
+                        remove_stopwords=True, 
+                        remove_punctuation=True,
+                        lemmatize=use_lemmatization
+                    ) for text in batch[text_column]]
+                    
+                    # Use the vectorizer and model from the trained topic model
+                    batch_vectors = topic_model['vectorizer'].transform(batch_texts)
+                    
+                    if method == 'lda':
+                        batch_topics = topic_model['model'].transform(batch_vectors)
+                    else:  # nmf
+                        batch_topics = topic_model['model'].transform(batch_vectors)
+                    
+                    # Store results
+                    for j, idx in enumerate(batch.index):
+                        for topic_idx in range(n_topics):
+                            col_name = f"Topic {topic_idx+1}"
+                            all_doc_topics.loc[idx, col_name] = batch_topics[j, topic_idx]
+                    
+                    # Report progress
+                    progress = min(100, (i + len(batch)) * 100 // len(remaining_df))
+                    elapsed = time.time() - start_time
+                    print(f"  Generating topics: {progress}% - {elapsed:.1f}s", end='\r')
+                
+                print(f"Topic generation completed in {time.time() - start_time:.2f} seconds       ")
+                doc_topics = all_doc_topics
+        
+        result = {
+            'topic_model': topic_model,
+            'document_topics': doc_topics,
+            'topics': topic_model['topics'],
+            'processing_info': processing_info
+        }
         
         return result
