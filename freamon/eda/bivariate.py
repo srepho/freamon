@@ -132,6 +132,7 @@ def analyze_feature_target(
     feature: str,
     target: str,
     include_plot: bool = True,
+    include_importance: bool = True,
 ) -> Dict[str, Any]:
     """
     Analyze the relationship between a feature and a target variable.
@@ -146,6 +147,8 @@ def analyze_feature_target(
         The name of the target column.
     include_plot : bool, default=True
         Whether to include plot images in the results.
+    include_importance: bool, default=True
+        Whether to include feature importance metrics like chi-squared.
     
     Returns
     -------
@@ -187,6 +190,24 @@ def analyze_feature_target(
         result["pearson_p_value"] = float(pearson_p)
         result["spearman_correlation"] = float(spearman_corr)
         result["spearman_p_value"] = float(spearman_p)
+        
+        # Calculate importance metrics
+        if include_importance:
+            # For numeric->numeric, we can use R-squared
+            from sklearn.linear_model import LinearRegression
+            
+            # Reshape for sklearn
+            X = df_clean[feature].values.reshape(-1, 1)
+            y = df_clean[target].values
+            
+            # Fit linear model and get R-squared
+            model = LinearRegression()
+            model.fit(X, y)
+            r2 = model.score(X, y)
+            
+            result["importance_metric"] = "r_squared" 
+            result["importance_value"] = float(r2)
+            result["importance_description"] = "R-squared (coefficient of determination) measures the proportion of variance in the target variable that can be explained by the feature."
         
         # Create plot if requested
         if include_plot:
@@ -253,6 +274,12 @@ def analyze_feature_target(
                     f_stat, p_value = stats.f_oneway(*groups)
                     result["anova_f_statistic"] = float(f_stat)
                     result["anova_p_value"] = float(p_value)
+                    
+                    # Add importance metric
+                    if include_importance:
+                        result["importance_metric"] = "f_statistic"
+                        result["importance_value"] = float(f_stat)
+                        result["importance_description"] = "F-statistic measures how much the feature discriminates between different target categories. Higher values indicate stronger discrimination."
                 except:
                     # ANOVA might fail for various reasons
                     pass
@@ -276,7 +303,7 @@ def analyze_feature_target(
             # Add ANOVA result if available
             if "anova_p_value" in result:
                 ax1.annotate(
-                    f"ANOVA p-value: {result['anova_p_value']:.3f}",
+                    f"ANOVA p-value: {result['anova_p_value']:.3f}\nF-statistic: {result['anova_f_statistic']:.3f}",
                     xy=(0.05, 0.95), 
                     xycoords='axes fraction',
                     bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
@@ -328,6 +355,17 @@ def analyze_feature_target(
                     f_stat, p_value = stats.f_oneway(*groups)
                     result["anova_f_statistic"] = float(f_stat)
                     result["anova_p_value"] = float(p_value)
+                    
+                    # Add importance metric
+                    if include_importance:
+                        # Calculate eta squared (effect size)
+                        sum_squares_between = sum(len(g) * ((g.mean() - df_clean[target].mean())**2) for g in groups)
+                        sum_squares_total = sum([(val - df_clean[target].mean())**2 for val in df_clean[target]])
+                        eta_squared = sum_squares_between / sum_squares_total if sum_squares_total > 0 else 0
+                        
+                        result["importance_metric"] = "eta_squared"
+                        result["importance_value"] = float(eta_squared)
+                        result["importance_description"] = "Eta-squared measures the proportion of variance in the target variable that can be attributed to the feature (effect size)."
                 except:
                     # ANOVA might fail for various reasons
                     pass
@@ -351,7 +389,7 @@ def analyze_feature_target(
             # Add ANOVA result if available
             if "anova_p_value" in result:
                 ax1.annotate(
-                    f"ANOVA p-value: {result['anova_p_value']:.3f}",
+                    f"ANOVA p-value: {result['anova_p_value']:.3f}\nF-statistic: {result['anova_f_statistic']:.3f}",
                     xy=(0.05, 0.95), 
                     xycoords='axes fraction',
                     bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
@@ -390,6 +428,21 @@ def analyze_feature_target(
             result["chi2_statistic"] = float(chi2)
             result["chi2_p_value"] = float(p)
             result["chi2_dof"] = int(dof)
+            
+            # Add importance metric
+            if include_importance:
+                # Calculate Cramer's V (normalized chi-square)
+                n = contingency.sum().sum()
+                phi2 = chi2 / n
+                r, k = contingency.shape
+                phi2corr = max(0, phi2 - ((k-1)*(r-1))/(n-1))
+                rcorr = r - ((r-1)**2)/(n-1)
+                kcorr = k - ((k-1)**2)/(n-1)
+                cramers_v = np.sqrt(phi2corr / min((kcorr-1), (rcorr-1))) if min((kcorr-1), (rcorr-1)) > 0 else 0
+                
+                result["importance_metric"] = "cramers_v"
+                result["importance_value"] = float(cramers_v)
+                result["importance_description"] = "Cramer's V is a measure of association between two categorical variables, ranging from 0 (no association) to 1 (perfect association)."
         
         # Create plot if requested
         if include_plot:
@@ -406,12 +459,21 @@ def analyze_feature_target(
             # Add chi-square result if available
             if "chi2_p_value" in result:
                 ax1.annotate(
-                    f"Chi-square p-value: {result['chi2_p_value']:.3f}",
+                    f"Chi-square p-value: {result['chi2_p_value']:.3f}\nChi-square: {result['chi2_statistic']:.3f}",
                     xy=(0.05, 0.95), 
                     xycoords='axes fraction',
                     bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
                     verticalalignment='top'
                 )
+                
+                if "importance_value" in result:
+                    ax2.annotate(
+                        f"Cramer's V: {result['importance_value']:.3f}",
+                        xy=(0.05, 0.95), 
+                        xycoords='axes fraction',
+                        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+                        verticalalignment='top'
+                    )
             
             # Save plot to BytesIO
             buf = BytesIO()

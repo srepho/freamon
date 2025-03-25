@@ -7,7 +7,7 @@ import pytest
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 
-from freamon.model_selection.cv_trainer import CrossValidatedTrainer
+from freamon.model_selection.cv_trainer import CrossValidationTrainer
 from freamon.model_selection.cv_training_step import CrossValidationTrainingStep
 from freamon.pipeline import Pipeline
 
@@ -20,9 +20,9 @@ def get_iris_data():
     return X, y
 
 
-def test_cross_validated_trainer_initialization():
-    """Test initialization of CrossValidatedTrainer."""
-    trainer = CrossValidatedTrainer(
+def test_cross_validation_trainer_initialization():
+    """Test initialization of CrossValidationTrainer."""
+    trainer = CrossValidationTrainer(
         model_type="lightgbm",
         problem_type="classification",
         cv_strategy="kfold",
@@ -38,14 +38,14 @@ def test_cross_validated_trainer_initialization():
     assert trainer._is_fitted is False
 
 
-def test_cross_validated_trainer_fit_predict():
-    """Test fitting and prediction with CrossValidatedTrainer."""
+def test_cross_validation_trainer_fit_predict():
+    """Test fitting and prediction with CrossValidationTrainer."""
     X, y = get_iris_data()
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
     
-    trainer = CrossValidatedTrainer(
+    trainer = CrossValidationTrainer(
         model_type="sklearn",
         problem_type="classification",
         cv_strategy="kfold",
@@ -94,8 +94,8 @@ def test_cross_validated_trainer_fit_predict():
     assert len(cv_results["accuracy"]) == 3  # n_splits
 
 
-def test_cross_validated_trainer_ensemble_methods():
-    """Test different ensemble methods in CrossValidatedTrainer."""
+def test_cross_validation_trainer_ensemble_methods():
+    """Test different ensemble methods in CrossValidationTrainer."""
     X, y = get_iris_data()
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
@@ -105,7 +105,7 @@ def test_cross_validated_trainer_ensemble_methods():
     
     for method in ensemble_methods:
         # Initialize trainer
-        trainer = CrossValidatedTrainer(
+        trainer = CrossValidationTrainer(
             model_type="sklearn",
             problem_type="classification",
             cv_strategy="kfold",

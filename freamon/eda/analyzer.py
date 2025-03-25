@@ -543,6 +543,7 @@ class EDAAnalyzer:
         lazy_loading: bool = True,
         include_export_button: bool = True,
         convert_to_html: bool = False,
+        report_type: str = "full",
     ) -> str:
         """
         Generate a report with the analysis results.
@@ -567,6 +568,11 @@ class EDAAnalyzer:
             as a Jupyter notebook (HTML reports only).
         convert_to_html : bool, default=False
             If format is 'markdown', whether to also generate an HTML version of the report.
+        report_type: str, default="full"
+            Type of report to generate. Options: 'full', 'univariate', 'bivariate'.
+            'full' - All analyses in a single report
+            'univariate' - Only basic stats and univariate analysis
+            'bivariate' - Only target-focused bivariate analysis
             
         Returns
         -------
@@ -582,11 +588,41 @@ class EDAAnalyzer:
         if "basic_stats" not in self.analysis_results:
             self.analyze_basic_stats()
         
+        # Create a filtered copy of analysis results based on report type
+        filtered_results = self.analysis_results.copy()
+        
+        if report_type == "univariate":
+            # Keep only basic_stats and univariate sections
+            filtered_results = {k: v for k, v in filtered_results.items() 
+                               if k in ["basic_stats", "univariate"]}
+            
+            # Update title if not specified by user
+            if title == "Exploratory Data Analysis Report":
+                title = "Univariate Analysis Report"
+                
+        elif report_type == "bivariate":
+            # Keep only basic_stats, bivariate and feature_importance sections
+            filtered_results = {k: v for k, v in filtered_results.items() 
+                               if k in ["basic_stats", "bivariate", "feature_importance"]}
+            
+            # Update title if not specified by user
+            if title == "Exploratory Data Analysis Report":
+                title = "Bivariate Analysis Report" 
+                
+            # Check if target column is set
+            if self.target_column is None:
+                print("Warning: No target column set for bivariate report.")
+            
+            # Add a note to basic stats if it exists
+            if "basic_stats" in filtered_results:
+                filtered_results["basic_stats"]["report_type"] = "bivariate"
+                filtered_results["basic_stats"]["target_column"] = self.target_column
+                
         # Generate the report based on the format
         if format.lower() == "markdown":
             report = generate_markdown_report(
                 df=self.df,
-                analysis_results=self.analysis_results,
+                analysis_results=filtered_results,
                 output_path=output_path,
                 title=title,
                 convert_to_html=convert_to_html,
@@ -595,7 +631,7 @@ class EDAAnalyzer:
         else:  # default to HTML
             report = generate_html_report(
                 df=self.df,
-                analysis_results=self.analysis_results,
+                analysis_results=filtered_results,
                 output_path=output_path,
                 title=title,
                 theme=theme,
@@ -604,6 +640,115 @@ class EDAAnalyzer:
             )
         
         return report
+        
+    def generate_univariate_report(
+        self,
+        output_path: str,
+        title: str = "Univariate Analysis Report",
+        format: str = "html",
+        theme: str = "cosmo",
+        lazy_loading: bool = True,
+        include_export_button: bool = True,
+        convert_to_html: bool = False,
+    ) -> str:
+        """
+        Generate a report containing only univariate analysis.
+        
+        This is a convenience method that calls generate_report with report_type='univariate'.
+        
+        Parameters
+        ----------
+        output_path : str
+            The path to save the report.
+        title : str, default="Univariate Analysis Report"
+            The title of the report.
+        format : str, default="html"
+            The format of the report. Options: 'html', 'markdown'.
+        theme : str, default="cosmo"
+            The Bootstrap theme to use for HTML reports.
+        lazy_loading : bool, default=True
+            Whether to enable lazy loading for images in HTML reports.
+        include_export_button : bool, default=True
+            Whether to include a button that allows exporting the report.
+        convert_to_html : bool, default=False
+            If format is 'markdown', whether to also generate an HTML version.
+            
+        Returns
+        -------
+        str
+            The report as a string in the specified format.
+        """
+        return self.generate_report(
+            output_path=output_path,
+            title=title,
+            format=format,
+            theme=theme,
+            lazy_loading=lazy_loading,
+            include_export_button=include_export_button,
+            convert_to_html=convert_to_html,
+            report_type="univariate"
+        )
+        
+    def generate_bivariate_report(
+        self,
+        output_path: str,
+        title: str = "Bivariate Analysis Report",
+        format: str = "html",
+        theme: str = "cosmo",
+        lazy_loading: bool = True,
+        include_export_button: bool = True,
+        convert_to_html: bool = False,
+    ) -> str:
+        """
+        Generate a report containing only bivariate analysis focused on the target.
+        
+        This is a convenience method that calls generate_report with report_type='bivariate'.
+        
+        Parameters
+        ----------
+        output_path : str
+            The path to save the report.
+        title : str, default="Bivariate Analysis Report"
+            The title of the report.
+        format : str, default="html"
+            The format of the report. Options: 'html', 'markdown'.
+        theme : str, default="cosmo"
+            The Bootstrap theme to use for HTML reports.
+        lazy_loading : bool, default=True
+            Whether to enable lazy loading for images in HTML reports.
+        include_export_button : bool, default=True
+            Whether to include a button that allows exporting the report.
+        convert_to_html : bool, default=False
+            If format is 'markdown', whether to also generate an HTML version.
+            
+        Returns
+        -------
+        str
+            The report as a string in the specified format.
+        """
+        # Make sure we have bivariate analysis results
+        if "bivariate" not in self.analysis_results:
+            print("No bivariate analysis results found. Running bivariate analysis first.")
+            self.analyze_bivariate()
+            
+        # Make sure we have feature importance if target is set
+        if self.target_column is not None and "feature_importance" not in self.analysis_results:
+            try:
+                print("Calculating feature importance for target column.")
+                self.analyze_feature_importance()
+            except Exception as e:
+                print(f"Warning: Could not calculate feature importance: {e}")
+        
+        return self.generate_report(
+            output_path=output_path,
+            title=title,
+            format=format,
+            theme=theme,
+            lazy_loading=lazy_loading,
+            include_export_button=include_export_button,
+            convert_to_html=convert_to_html,
+            report_type="bivariate"
+        )
     
     def analyze_feature_importance(
         self,
@@ -864,6 +1009,7 @@ class EDAAnalyzer:
         use_sampling: bool = False,
         cache_results: bool = True,
         show_progress: bool = False,
+        split_reports: bool = False,
     ) -> Dict[str, Any]:
         """
         Run a complete analysis and optionally generate a report.
@@ -877,6 +1023,8 @@ class EDAAnalyzer:
         include_multivariate : bool, default=False
             Whether to include multivariate analysis in the full analysis. Set to False by default
             to improve performance since multivariate analysis can be computationally expensive.
+        include_feature_importance : bool, default=True
+            Whether to include feature importance analysis.
         sample_size : Optional[int], default=None
             The number of rows to sample for analysis. If None and use_sampling is True,
             a suitable sample size is chosen based on the dataframe size.
@@ -886,6 +1034,8 @@ class EDAAnalyzer:
             Whether to cache results for expensive operations like PCA and t-SNE.
         show_progress : bool, default=False
             Whether to show progress messages during analysis.
+        split_reports : bool, default=False
+            Whether to generate separate reports for univariate and bivariate analysis.
             
         Returns
         -------
@@ -893,6 +1043,7 @@ class EDAAnalyzer:
             A dictionary with all analysis results.
         """
         import time
+        import os
         
         start_time = time.time()
         
@@ -994,17 +1145,57 @@ class EDAAnalyzer:
             except Exception as e:
                 print(f"Warning: Feature importance analysis failed: {e}")
         
-        # Generate report if requested
+        # Generate reports if requested
         if output_path is not None:
-            if show_progress:
-                print("Generating HTML report...")
-                report_start = time.time()
+            if split_reports:
+                # Determine base paths for separate reports
+                path_parts = os.path.splitext(output_path)
+                base_path = path_parts[0]
+                ext = path_parts[1] if len(path_parts) > 1 else ".html"
                 
-            self.generate_report(output_path=output_path, title=title)
-            
-            if show_progress:
-                report_end = time.time()
-                print(f"Report generation complete in {report_end - report_start:.2f} seconds")
+                univariate_path = f"{base_path}_univariate{ext}"
+                bivariate_path = f"{base_path}_bivariate{ext}"
+                
+                # Generate separate reports
+                if show_progress:
+                    print("Generating univariate report...")
+                    univ_report_start = time.time()
+                
+                self.generate_univariate_report(output_path=univariate_path)
+                
+                if show_progress:
+                    univ_report_end = time.time()
+                    print(f"Univariate report generation complete in {univ_report_end - univ_report_start:.2f} seconds")
+                    print("Generating bivariate report...")
+                    biv_report_start = time.time()
+                
+                self.generate_bivariate_report(output_path=bivariate_path)
+                
+                if show_progress:
+                    biv_report_end = time.time()
+                    print(f"Bivariate report generation complete in {biv_report_end - biv_report_start:.2f} seconds")
+                
+                # Also generate full report if needed
+                if show_progress:
+                    print("Generating full report...")
+                    full_report_start = time.time()
+                
+                self.generate_report(output_path=output_path, title=title)
+                
+                if show_progress:
+                    full_report_end = time.time()
+                    print(f"Full report generation complete in {full_report_end - full_report_start:.2f} seconds")
+            else:
+                # Generate a single full report
+                if show_progress:
+                    print("Generating HTML report...")
+                    report_start = time.time()
+                    
+                self.generate_report(output_path=output_path, title=title)
+                
+                if show_progress:
+                    report_end = time.time()
+                    print(f"Report generation complete in {report_end - report_start:.2f} seconds")
         
         end_time = time.time()
         total_time = end_time - start_time

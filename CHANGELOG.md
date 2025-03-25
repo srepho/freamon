@@ -1,5 +1,19 @@
 # Changelog
 
+## Version 0.3.32 (2025-03-25)
+
+### Added
+- Improved EDA module with split report generation capability
+- Added separate univariate and bivariate reports for better performance
+- Enhanced bivariate analysis with feature importance metrics
+- Added ability to run a complete analysis with separate reports
+- Added convenience methods for generating univariate and bivariate reports
+
+### Improved
+- Better performance for bivariate analysis by moving it to a separate report
+- Enhanced feature importance display in bivariate analysis
+- More detailed statistical measures for feature-target relationships
+
 ## Version 0.3.31 (2025-03-25)
 
 ### Fixed
