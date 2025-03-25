@@ -1,5 +1,12 @@
 # Freamon: Feature-Rich EDA, Analytics, and Modeling Toolkit
 
+<p align="center">
+  <img src="package_logo.webp" alt="Freamon Logo" width="250"/>
+</p>
+
+[![PyPI version](https://img.shields.io/pypi/v/freamon.svg)](https://pypi.org/project/freamon/)
+[![GitHub release](https://img.shields.io/github/v/release/srepho/freamon)](https://github.com/srepho/freamon/releases)
+
 Freamon is a comprehensive Python toolkit for exploratory data analysis, feature engineering, and model development with a focus on practical data science workflows.
 
 ## Features
