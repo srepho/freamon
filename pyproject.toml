@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "freamon"
 version = "0.3.28"
 authors = [
-    {name = "The Freamon Team", email = "contact@freamon.ai"},
+    {name = "Stephen Oates", email = "stephen.j.a.oates@gmail.com"},
 ]
 description = "Advanced feature engineering, analysis, modeling and optimization for data science"
 readme = "README.md"
