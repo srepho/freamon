@@ -1,169 +1,219 @@
 # Optimized Topic Modeling
 
-This guide explains how to use the optimized topic modeling functionality in the Freamon package to efficiently analyze large text collections.
+The freamon package provides enhanced topic modeling capabilities designed for large datasets with configurable preprocessing and deduplication. This guide explains how to use the optimized topic modeling functionality to analyze text data effectively.
 
 ## Overview
 
-The optimized topic modeling pipeline provides a streamlined way to:
+The `create_topic_model_optimized` function in the `freamon.utils.text_utils` module provides a comprehensive solution for topic modeling that handles:
 
-1. Preprocess text data with configurable options
-2. Remove duplicates (exact or fuzzy)
-3. Intelligently sample very large datasets
-4. Create topic models using LDA or NMF
-5. Map topics back to the full dataset
-6. Use parallel processing for better performance
+- Configurable text preprocessing
+- Automatic deduplication (exact or fuzzy)
+- Smart sampling for very large datasets
+- Parallel processing for performance
+- Full dataset coverage with efficient batch processing
+- Mapping between deduplicated and original documents
 
 ## Basic Usage
 
-Here's a minimal example:
-
 ```python
-from freamon.utils.text_utils import create_topic_model_optimized
 import pandas as pd
+from freamon.utils.text_utils import create_topic_model_optimized
 
-# Create your DataFrame with a text column
-df = pd.DataFrame({"text": ["Your documents here..."], "category": ["example"]})
+# Prepare your data
+df = pd.DataFrame({
+    'text': ['text document 1', 'text document 2', ...],
+    'category': ['cat1', 'cat2', ...]
+})
 
-# Run topic modeling with default settings
+# Run optimized topic modeling
 result = create_topic_model_optimized(
-    df,
-    text_column="text",
+    df, 
+    text_column='text',
     n_topics=5,
-    method="nmf"  # or "lda"
+    method='nmf',
+    preprocessing_options={'enabled': True},
+    deduplication_options={'enabled': True},
+    return_full_data=True
 )
 
 # Access the results
-topics = result["topics"]
-doc_topics = result["document_topics"]
-info = result["processing_info"]
+topics = result['topics']
+document_topics = result['document_topics']
+topic_model = result['topic_model']
+processing_info = result['processing_info']
 
-# Print top words for each topic
+# Print the topics
 for topic_idx, words in topics:
     print(f"Topic {topic_idx + 1}: {', '.join(words[:10])}")
 ```
 
-## Advanced Configuration
+## Configuration Options
 
 ### Preprocessing Options
 
-Control how texts are preprocessed:
+The `preprocessing_options` parameter allows fine-grained control over text preprocessing:
 
 ```python
 preprocessing_options = {
-    'enabled': True,               # Set to False to skip preprocessing
-    'use_lemmatization': True,     # Use lemmatization (requires spaCy)
-    'remove_stopwords': True,      # Remove common stopwords 
-    'remove_punctuation': True,    # Remove punctuation
+    'enabled': True,               # Whether to perform preprocessing
+    'use_lemmatization': True,     # Whether to use lemmatization
+    'remove_stopwords': True,      # Whether to remove stopwords
+    'remove_punctuation': True,    # Whether to remove punctuation
     'min_token_length': 3,         # Minimum token length to keep
-    'custom_stopwords': ['said'],  # Additional stopwords
-    'batch_size': 1000             # Batch size for processing
+    'custom_stopwords': ['said'],  # Additional stopwords to remove
+    'batch_size': 1000             # Batch size for preprocessing
 }
-
-result = create_topic_model_optimized(
-    df,
-    text_column="text",
-    n_topics=5,
-    preprocessing_options=preprocessing_options
-)
 ```
 
 ### Deduplication Options
 
-Configure how duplicates are handled:
+The `deduplication_options` parameter controls how duplicate documents are handled:
 
 ```python
 deduplication_options = {
-    'enabled': True,               # Set to False to keep all documents
-    'method': 'exact',             # 'exact', 'fuzzy', or 'none'
-    'hash_method': 'hash',         # For exact: 'hash' or 'ngram'
-    'similarity_threshold': 0.85,  # For fuzzy: similarity threshold
-    'similarity_method': 'cosine', # For fuzzy: 'cosine', 'jaccard', 'levenshtein'
-    'keep': 'first'                # Which duplicate to keep: 'first' or 'last'
+    'enabled': True,              # Whether to deduplicate
+    'method': 'exact',            # 'exact', 'fuzzy', or 'none'
+    'hash_method': 'hash',        # 'hash' or 'ngram' (for exact)
+    'similarity_threshold': 0.85, # Threshold for fuzzy deduplication
+    'similarity_method': 'cosine', # 'cosine', 'jaccard', 'levenshtein'
+    'keep': 'first'               # 'first' or 'last' document to keep
 }
-
-result = create_topic_model_optimized(
-    df,
-    text_column="text",
-    n_topics=5,
-    deduplication_options=deduplication_options,
-    return_original_mapping=True  # Get mapping from deduplicated docs to originals
-)
-
-# Access deduplication mapping
-if 'deduplication_map' in result:
-    dedup_map = result['deduplication_map']
-    # dedup_map maps kept indices to lists of all duplicate indices
 ```
 
-### Large Dataset Handling
+### Other Parameters
 
-For large datasets (up to 100K documents):
+- `n_topics`: Number of topics to extract (default: 5)
+- `method`: Topic modeling method ('nmf' or 'lda', default: 'nmf')
+- `max_docs`: Maximum number of documents to process for topic modeling (default: auto)
+- `return_full_data`: Whether to return topic distributions for all documents (default: True)
+- `return_original_mapping`: Whether to return mapping from deduplicated to original documents (default: False)
+- `use_multiprocessing`: Whether to use multiprocessing for text preprocessing (default: True)
+
+## Return Value
+
+The function returns a dictionary with the following keys:
+
+- `topic_model`: Dictionary with the trained model and topics
+- `document_topics`: DataFrame with document-topic distributions
+- `topics`: List of (topic_idx, words) tuples
+- `processing_info`: Dict with processing statistics
+- `deduplication_map`: Dict mapping deduplicated to original indices (if requested)
+
+## Working with Large Datasets
+
+The optimized topic modeling functionality is designed to handle large datasets efficiently:
 
 ```python
+# For a large dataset (e.g., 100,000+ documents)
 result = create_topic_model_optimized(
     large_df,
-    text_column="text",
-    n_topics=5,
-    max_docs=25000,           # Maximum docs to use for model training
-    return_full_data=True,    # Apply model to all documents
-    use_multiprocessing=True  # Use parallel processing
+    text_column='text',
+    n_topics=10,
+    method='nmf',
+    preprocessing_options={
+        'enabled': True,
+        'use_lemmatization': False,  # Disable for speed
+        'batch_size': 5000           # Larger batches for efficiency
+    },
+    max_docs=25000,  # Sample 25K docs for model building
+    deduplication_options={
+        'enabled': True,
+        'method': 'exact'  # Faster than fuzzy
+    },
+    return_full_data=True,  # Get topics for all documents
+    use_multiprocessing=True
 )
 ```
 
-## Adding Topics to Your DataFrame
+## Integrating with DataFrames
 
-Add dominant topics to your original DataFrame:
+You can easily add topic distributions back to your original DataFrame:
 
 ```python
-# Get document-topic distributions
-doc_topics_df = result["document_topics"]
+# Get document-topic distribution
+doc_topics = result['document_topics']
+
+# Add topics to the original DataFrame
+df_with_topics = df.copy()
+for col in doc_topics.columns:
+    df_with_topics[col] = doc_topics[col]
 
 # Find dominant topic for each document
-topic_cols = [col for col in doc_topics_df.columns if col.startswith('Topic')]
+import numpy as np
 
-# Get dominant topic and probability
-def get_dominant_topic(row):
-    max_topic = row[topic_cols].idxmax()
-    max_prob = row[max_topic]
-    return int(max_topic.split()[1]), max_prob
+def get_dominant_topic(row, topic_cols):
+    topic_values = [row[col] for col in topic_cols]
+    if all(x == 0 for x in topic_values):
+        return -1  # No dominant topic
+    return np.argmax(topic_values) + 1  # 1-based indexing
 
-# Apply to get dominant topics and probabilities
-dominant_topics = pd.DataFrame(
-    doc_topics_df.apply(get_dominant_topic, axis=1).tolist(),
-    index=doc_topics_df.index,
-    columns=['dominant_topic', 'topic_probability']
+# Add dominant topic column
+topic_columns = doc_topics.columns.tolist()
+df_with_topics['dominant_topic'] = df_with_topics.apply(
+    lambda row: get_dominant_topic(row, topic_columns), axis=1
 )
-
-# Add to original DataFrame
-enhanced_df = df.copy()
-enhanced_df['dominant_topic'] = dominant_topics['dominant_topic'].reindex(df.index)
-enhanced_df['topic_probability'] = dominant_topics['topic_probability'].reindex(df.index)
-```
-
-## Processing Information
-
-The result includes detailed processing statistics:
-
-```python
-info = result["processing_info"]
-print(f"Original documents: {info['original_doc_count']}")
-print(f"Duplicates removed: {info['duplicates_removed']}")
-print(f"Processed documents: {info['processed_doc_count']}")
-print(f"Sample size: {info['sample_size']}")
-print(f"Preprocessing time: {info.get('preprocessing_time', 'N/A')}")
-print(f"Multiprocessing: {info.get('multiprocessing_enabled', False)}")
 ```
 
 ## Performance Considerations
 
-- For datasets under 10K documents: all documents are used
-- For datasets 10K-100K: automatic sampling with `max_docs` parameter
-- Multiprocessing is enabled automatically for datasets >10K documents 
-- Batch processing is used throughout for memory efficiency
-- Deduplication significantly improves performance for redundant data
+- **Lemmatization**: Enabling lemmatization significantly improves topic quality but is much slower. For very large datasets, consider disabling it.
+- **Deduplication**: Exact deduplication is much faster than fuzzy deduplication. Use fuzzy only when needed.
+- **Multiprocessing**: Recommended for datasets with more than 10,000 documents.
+- **Sampling**: For extremely large datasets (100K+), the function will automatically sample a subset for model training.
+
+## Example: Topic Distribution Analysis
+
+```python
+# Analyze topic distribution by category
+category_topic_dist = df_with_topics.groupby('category')[topic_columns].mean()
+
+# Visualize with matplotlib
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(12, 8))
+plt.imshow(category_topic_dist.values, cmap='viridis', aspect='auto')
+plt.colorbar(label='Topic Probability')
+plt.xticks(range(len(topic_columns)), topic_columns, rotation=45, ha='right')
+plt.yticks(range(len(category_topic_dist.index)), category_topic_dist.index)
+plt.xlabel('Topics')
+plt.ylabel('Categories')
+plt.title('Topic Distribution by Category')
+plt.tight_layout()
+plt.savefig('category_topic_distribution.png')
+```
+
+## Advanced: Fuzzy Deduplication
+
+For cases where exact matching is not sufficient, fuzzy deduplication can identify similar documents:
+
+```python
+result = create_topic_model_optimized(
+    df,
+    text_column='text',
+    n_topics=5,
+    method='nmf',
+    preprocessing_options={'enabled': True},
+    deduplication_options={
+        'enabled': True,
+        'method': 'fuzzy',
+        'similarity_threshold': 0.8,  # Documents with similarity >= 0.8 are considered duplicates
+        'similarity_method': 'cosine'  # 'cosine', 'jaccard', or 'levenshtein'
+    },
+    return_original_mapping=True  # Get mapping between duplicates
+)
+
+# Access the deduplication mapping
+dedup_map = result['deduplication_map']
+
+# Example: For each kept document, show its duplicates
+for kept_idx, duplicates in dedup_map.items():
+    if len(duplicates) > 1:  # Has duplicates
+        print(f"Document {kept_idx} has {len(duplicates)-1} duplicates: {duplicates}")
+```
 
 ## Complete Example
 
-See the examples directory for complete examples:
-- `optimized_topic_modeling_example.py`: Basic usage
-- `dataframe_topic_modeling_example.py`: DataFrame integration
+For a complete working example, see the example scripts in the package:
+
+- `examples/optimized_topic_modeling_example.py`: Basic usage
+- `examples/dataframe_topic_modeling_example.py`: Advanced DataFrame integration
