@@ -8,6 +8,7 @@ Freamon is a comprehensive Python toolkit for exploratory data analysis, feature
 - **Feature Engineering**: Advanced feature engineering for numeric, categorical, and text data
 - **Deduplication**: Multiple deduplication methods with index tracking to map results back to original data
 - **Topic Modeling**: Optimized text analysis with NMF and LDA, supporting large datasets up to 100K documents
+- **Automated Modeling**: Intelligent end-to-end modeling workflow for text, tabular, and time series data
 - **Modeling**: Custom model implementations with feature importance and model interpretation
 - **Pipeline**: Scikit-learn compatible pipeline with additional features
 - **Drift Analysis**: Tools for detecting and analyzing data drift
@@ -40,6 +41,34 @@ analyzer.generate_report('eda_report.md', format='markdown')
 ```
 
 ## Key Components
+
+### Automated Modeling Flow
+
+Perform end-to-end modeling with automatic handling of text and time series features:
+
+```python
+from freamon import auto_model
+
+# Simple interface - just provide a dataframe, target, and optional date column
+results = auto_model(
+    df=train_df,
+    target_column='target',
+    date_column='date',  # Optional for time series
+    model_type='lightgbm',
+    problem_type='classification',
+    text_columns=['text_column'],  # Will be auto-detected if not provided
+    categorical_columns=['category_column']  # Will be auto-detected if not provided
+)
+
+# Access the trained model and results
+model = results['model']
+feature_importance = results['feature_importance']
+text_topics = results['text_topics']
+cv_metrics = results['metrics']
+
+# Make predictions on new data
+predictions = results['autoflow'].predict(test_df)
+```
 
 ### EDA Module
 

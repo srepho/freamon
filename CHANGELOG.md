@@ -1,5 +1,21 @@
 # Changelog
 
+## Version 0.3.29 (2025-03-25)
+
+### Added
+- New AutoModelFlow for end-to-end automated modeling workflows
+- Automatic handling of text data with topic modeling and feature extraction
+- Automatic time series feature creation for date-based columns
+- Intelligent cross-validation selection based on data type
+- High-level `auto_model` function for simplified usage
+- Comprehensive documentation in `docs/usage/automated_modeling.md` 
+- New example script demonstrating automated modeling with text and time series data
+
+### Improved
+- Enhanced integration between text processing, feature engineering, and modeling
+- Better handling of different types of columns with automatic detection
+- Automated hyperparameter tuning with time series cross-validation support
+
 ## Version 0.3.28 (2025-03-25)
 
 ### Added

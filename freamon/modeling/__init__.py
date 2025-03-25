@@ -20,6 +20,8 @@ from freamon.modeling.visualization import (
     plot_time_series_predictions,
     plot_cv_predictions_over_time,
 )
+# Import new autoflow functionality
+from freamon.modeling.autoflow import AutoModelFlow, auto_model
 
 # Problem type constants for easier usage
 REGRESSION = 'regression'
@@ -38,6 +40,7 @@ TEXT_FEATURE_GROUPS = {
     'Text Sentiment': ['text_sent_'],
     'Bag-of-Words': ['bow_'],
     'TF-IDF': ['tfidf_'],
+    'Topic Model': ['_Topic_']
 }
 
 TIME_SERIES_FEATURE_GROUPS = {
@@ -45,6 +48,7 @@ TIME_SERIES_FEATURE_GROUPS = {
     'Rolling Features': ['_rolling_'],
     'Difference Features': ['_diff_'],
     'Seasonal Features': ['_seasonal_'],
+    'Date Features': ['_year', '_month', '_day', '_dayofweek', '_quarter']
 }
 
 # Combined feature groups for typical use cases
@@ -60,6 +64,7 @@ __all__ = [
     "create_lightgbm_regressor",
     "create_lightgbm_classifier", 
     "create_sklearn_model",
+    "auto_model",  # New automated modeling function
     
     # Visualization functions
     "plot_cv_metrics",
@@ -73,6 +78,7 @@ __all__ = [
     "Model",
     "ModelTrainer",
     "LightGBMModel",
+    "AutoModelFlow",  # New automated modeling class
     
     # Constants
     "REGRESSION",

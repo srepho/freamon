@@ -585,11 +585,12 @@ class TextProcessor:
             plt.show()
 
 
-def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf', 
+def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf', 
                                preprocessing_options=None, max_docs=None,
                                deduplication_options=None, return_full_data=True,
                                return_original_mapping=False, use_multiprocessing=True,
-                               anonymize=False, anonymization_config=None):
+                               anonymize=False, anonymization_config=None,
+                               auto_topics_range=(2, 15), auto_topics_method='coherence'):
     """
     Optimized topic modeling workflow with enhanced text preprocessing, deduplication,
     and smart sampling for large datasets up to 100K rows.
@@ -600,8 +601,9 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
         DataFrame containing the text data
     text_column : str
         Name of the column containing text to analyze
-    n_topics : int, default=5
-        Number of topics to extract
+    n_topics : int or str, default='auto'
+        Number of topics to extract. If 'auto', the optimal number of topics
+        will be determined automatically using coherence scores.
     method : str, default='nmf'
         Topic modeling method ('nmf' or 'lda')
     preprocessing_options : dict, default=None
@@ -635,6 +637,10 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
         (requires Allyanonimiser package)
     anonymization_config : dict, default=None
         Configuration options for Allyanonimiser (e.g., patterns to use, replacement strategy)
+    auto_topics_range : tuple, default=(2, 15)
+        Range of topic numbers to try when using automatic topic number detection
+    auto_topics_method : str, default='coherence'
+        Method to use for automatic topic number detection: 'coherence' or 'stability'
         
     Returns:
     --------
@@ -645,6 +651,7 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
         - 'topics': List of (topic_idx, words) tuples 
         - 'processing_info': Dict with processing statistics
         - 'deduplication_map': Dict mapping deduplicated to original indices (if return_original_mapping=True)
+        - 'topic_selection': Dict with topic selection metrics (if n_topics='auto')
     """
     import multiprocessing
     
@@ -1008,7 +1015,6 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
         processing_info['preprocessing_time'] = elapsed
     
     # Step 5: Create the topic model
-    print(f"Creating {method.upper()} topic model with {n_topics} topics...")
     
     # Adjust max_features based on dataset size
     if len(cleaned_texts) <= 1000:
@@ -1028,18 +1034,124 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
     else:
         min_df = 5
     
-    topic_model = time_operation(
-        f"Creating {n_topics}-topic model",
-        processor.create_topic_model,
-        texts=cleaned_texts,
-        n_topics=n_topics,
-        method=method,
-        max_features=min(max_features, len(cleaned_texts) // 2),
-        max_df=0.7,
-        min_df=min_df,
-        ngram_range=(1, 2),
-        random_state=42
-    )
+    # Calculate max_features based on dataset size
+    max_features_value = min(max_features, len(cleaned_texts) // 2)
+    
+    # Check if we should find optimal number of topics automatically
+    if n_topics == 'auto':
+        print(f"Automatically determining optimal number of topics...")
+        start_time = time.time()
+        
+        # Initialize containers for results
+        topic_range = range(auto_topics_range[0], auto_topics_range[1] + 1)
+        coherence_scores = []
+        topic_models = []
+        
+        # Try different numbers of topics
+        for num_topics in topic_range:
+            print(f"  Evaluating {num_topics} topics...")
+            model = processor.create_topic_model(
+                texts=cleaned_texts,
+                n_topics=num_topics,
+                method=method,
+                max_features=max_features_value,
+                max_df=0.7,
+                min_df=min_df,
+                ngram_range=(1, 2),
+                random_state=42
+            )
+            
+            # Store model and coherence score
+            topic_models.append(model)
+            coherence_scores.append(model['coherence_score'])
+            
+            # Calculate additional metrics for the stability method
+        stability_scores = []
+        if auto_topics_method == 'stability':
+            # Calculate stability scores based on topic term matrix
+            for i, model in enumerate(topic_models):
+                topic_term_matrix = model['topic_term_matrix']
+                num_topics = model['n_topics']
+                
+                # Calculate topic stability metrics
+                # 1. Calculate average intra-topic similarity (higher is better)
+                intra_similarity = []
+                for t in range(num_topics):
+                    # Calculate cosine similarity between this topic and all other topics
+                    cos_sims = []
+                    for other_t in range(num_topics):
+                        if t != other_t:
+                            # Calculate cosine similarity between topic vectors
+                            dot_product = np.dot(topic_term_matrix[t], topic_term_matrix[other_t])
+                            norm_t = np.linalg.norm(topic_term_matrix[t])
+                            norm_other = np.linalg.norm(topic_term_matrix[other_t])
+                            cos_sim = dot_product / (norm_t * norm_other) if norm_t > 0 and norm_other > 0 else 0
+                            cos_sims.append(cos_sim)
+                    
+                    # Average similarity (higher means topics are more similar, which is less desirable)
+                    if cos_sims:
+                        intra_similarity.append(np.mean(cos_sims))
+                
+                # Calculate stability score: coherence penalized by intra-topic similarity
+                # High coherence and low similarity is ideal
+                mean_intra_sim = np.mean(intra_similarity) if intra_similarity else 0
+                # Stability score: coherence score adjusted by topic distinctiveness
+                stability_score = coherence_scores[i] * (1 - mean_intra_sim)
+                stability_scores.append(stability_score)
+        
+        # Find optimal number of topics
+        if auto_topics_method == 'coherence':
+            # Select model with highest coherence score
+            best_idx = np.argmax(coherence_scores)
+            best_n_topics = topic_range[best_idx]
+            best_model = topic_models[best_idx]
+        elif auto_topics_method == 'stability' and stability_scores:
+            # Select model with highest stability score
+            best_idx = np.argmax(stability_scores)
+            best_n_topics = topic_range[best_idx]
+            best_model = topic_models[best_idx]
+        else:
+            # Default to coherence if stability isn't available
+            best_idx = np.argmax(coherence_scores)
+            best_n_topics = topic_range[best_idx]
+            best_model = topic_models[best_idx]
+        
+        # Use the best model
+        topic_model = best_model
+        n_topics = best_n_topics
+        
+        # Store topic selection metrics
+        topic_selection = {
+            'method': auto_topics_method,
+            'topic_range': list(topic_range),
+            'coherence_scores': coherence_scores,
+            'best_n_topics': best_n_topics,
+            'selection_time': time.time() - start_time
+        }
+        
+        # Add stability scores if available
+        if stability_scores:
+            topic_selection['stability_scores'] = stability_scores
+        
+        print(f"Optimal number of topics: {best_n_topics} (coherence score: {coherence_scores[best_idx]:.4f})")
+        print(f"Topic selection completed in {topic_selection['selection_time']:.2f} seconds")
+        
+    else:
+        # Use the specified number of topics
+        print(f"Creating {method.upper()} topic model with {n_topics} topics...")
+        topic_model = time_operation(
+            f"Creating {n_topics}-topic model",
+            processor.create_topic_model,
+            texts=cleaned_texts,
+            n_topics=n_topics,
+            method=method,
+            max_features=max_features_value,
+            max_df=0.7,
+            min_df=min_df,
+            ngram_range=(1, 2),
+            random_state=42
+        )
+        topic_selection = None
     
     # Step 6: Get document-topic distribution for the sample
     doc_topics = processor.get_document_topics(topic_model)
@@ -1147,5 +1259,19 @@ def create_topic_model_optimized(df, text_column, n_topics=5, method='nmf',
     # Add deduplication mapping if requested
     if return_original_mapping and deduplication_mapping:
         result['deduplication_map'] = deduplication_mapping
+    
+    # Add topic selection information if automatic detection was used
+    if topic_selection is not None:
+        result['topic_selection'] = topic_selection
+        
+        # Also add this information to processing_info
+        processing_info['auto_topic_detection'] = True
+        processing_info['best_n_topics'] = topic_selection['best_n_topics']
+        processing_info['topic_selection_method'] = topic_selection['method']
+    else:
+        processing_info['auto_topic_detection'] = False
+    
+    # Ensure n_topics is correctly reflected in the processing_info
+    processing_info['n_topics'] = n_topics
     
     return result
