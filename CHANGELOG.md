@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 0.3.47
+* Fixed critical bugs in deduplication module:
+  * Fixed handling of categorical columns in evaluation to prevent "Categorical does not support reduction 'sum'" error
+  * Resolved multiprocessing pickling issues in chunked processing by moving nested functions to module level
+  * Improved robustness for various data types in deduplication evaluation
+  * Enhanced parallel processing for better stability with large datasets
+
 ## Version 0.3.46
 * Added enhanced deduplication reporting system:
   * Implemented comprehensive HTML reports with detailed statistics and visualizations

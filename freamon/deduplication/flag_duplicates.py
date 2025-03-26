@@ -13,6 +13,8 @@ from typing import Dict, List, Tuple, Union, Optional, Any, Set, Callable
 import pandas as pd
 import numpy as np
 import networkx as nx
+import time
+import psutil
 
 from freamon.utils.dataframe_utils import check_dataframe_type, convert_dataframe
 import logging
@@ -24,6 +26,33 @@ from freamon.deduplication.exact_deduplication import hash_deduplication
 from freamon.deduplication.fuzzy_deduplication import find_similar_texts
 from freamon.deduplication.lsh_deduplication import lsh_deduplication
 from freamon.deduplication.polars_supervised_deduplication import PolarsSupervisedDeduplicationModel
+
+# Import automatic parameter selection
+try:
+    from freamon.deduplication.auto_params import apply_auto_params
+    AUTO_PARAMS_AVAILABLE = True
+except ImportError:
+    AUTO_PARAMS_AVAILABLE = False
+
+# Import evaluation utilities
+try:
+    from freamon.deduplication.evaluation import (
+        calculate_deduplication_metrics,
+        plot_confusion_matrix,
+        evaluate_threshold_sensitivity,
+        generate_evaluation_report,
+        flag_and_evaluate
+    )
+    EVALUATION_AVAILABLE = True
+except ImportError:
+    EVALUATION_AVAILABLE = False
+
+# Import the progress tracking utilities
+try:
+    from freamon.utils.progress_tracker import ProgressTracker, BlockProgressTracker, create_deduplication_tracker
+    PROGRESS_TRACKING_AVAILABLE = True
+except ImportError:
+    PROGRESS_TRACKING_AVAILABLE = False
 
 
 def flag_exact_duplicates(
@@ -1374,6 +1403,21 @@ def flag_similar_records(
     num_bands: Optional[int] = None,
     rows_per_band: Optional[int] = None,
     
+    # Progress tracking parameters
+    show_progress: bool = False,
+    jupyter_mode: Optional[bool] = None,
+    
+    # Auto-mode parameters
+    auto_mode: bool = False,
+    memory_limit_gb: Optional[float] = None,
+    
+    # Evaluation parameters
+    known_duplicate_column: Optional[str] = None,
+    evaluate: bool = False,
+    generate_report: bool = False,
+    report_format: str = 'text',
+    include_plots: bool = True,
+    
     # Legacy parameters
     add_similarity_score: bool = False,
     add_group_id: bool = False,
@@ -1449,6 +1493,30 @@ def flag_similar_records(
         Number of bands for LSH. If None, calculated automatically from threshold.
     rows_per_band : Optional[int], default=None
         Number of rows per band for LSH. If None, calculated automatically from threshold.
+    show_progress : bool, default=False
+        Whether to show progress tracking during processing. Creates interactive
+        progress bars with ETA and memory usage information.
+    jupyter_mode : Optional[bool], default=None
+        Whether to use Jupyter notebook widgets for progress display.
+        If None, auto-detects the environment.
+    auto_mode : bool, default=False
+        Whether to automatically select optimal parameters based on dataset characteristics.
+        If True, intelligently determines the best deduplication approach.
+    memory_limit_gb : Optional[float], default=None
+        Maximum memory to use for deduplication in gigabytes.
+        If None, uses 75% of available system memory.
+    known_duplicate_column : Optional[str], default=None
+        Column name containing ground truth duplicate flags (0/1 or True/False).
+        Used for evaluating deduplication performance.
+    evaluate : bool, default=False
+        Whether to evaluate deduplication performance against known_duplicate_column.
+        If True, returns metrics along with the results.
+    generate_report : bool, default=False
+        Whether to generate an evaluation report.
+    report_format : str, default='text'
+        Format for evaluation report: 'text', 'html', or 'markdown'.
+    include_plots : bool, default=True
+        Whether to include visualizations in the evaluation report.
     add_similarity_score : bool, default=False
         Legacy parameter, use similarity_column instead.
         If True, add a column with similarity scores.
@@ -1522,13 +1590,129 @@ def flag_similar_records(
         
     if add_similarity_score and similarity_column is None:
         similarity_column = 'similarity_score'
-        
+    
+    # Apply auto parameter selection if requested
+    if auto_mode:
+        if not AUTO_PARAMS_AVAILABLE:
+            print("Warning: Auto mode requested but auto_params module not available. Using manual parameters.")
+        else:
+            # Gather current parameters
+            params = {
+                'weights': weights,
+                'threshold': threshold,
+                'method': method,
+                'flag_column': flag_column,
+                'inplace': inplace,
+                'group_column': group_column,
+                'similarity_column': similarity_column,
+                'max_comparisons': max_comparisons,
+                'chunk_size': chunk_size,
+                'n_jobs': n_jobs,
+                'use_polars': use_polars,
+                'blocking_columns': blocking_columns,
+                'blocking_method': blocking_method,
+                'blocking_rules': blocking_rules,
+                'max_block_size': max_block_size,
+                'use_lsh': use_lsh,
+                'lsh_method': lsh_method,
+                'lsh_threshold': lsh_threshold,
+                'num_perm': num_perm,
+                'num_bands': num_bands,
+                'rows_per_band': rows_per_band,
+                'memory_limit_gb': memory_limit_gb,
+                'show_progress': show_progress,
+                'jupyter_mode': jupyter_mode
+            }
+            
+            # Apply auto parameter selection
+            auto_params = apply_auto_params(df, columns, **params)
+            
+            # Update parameters with auto-selected values
+            if 'chunk_size' in auto_params and auto_params['chunk_size'] is not None:
+                chunk_size = auto_params['chunk_size']
+            if 'max_comparisons' in auto_params and auto_params['max_comparisons'] is not None:
+                max_comparisons = auto_params['max_comparisons']
+            if 'n_jobs' in auto_params:
+                n_jobs = auto_params['n_jobs']
+            if 'use_lsh' in auto_params:
+                use_lsh = auto_params['use_lsh']
+            if use_lsh and 'lsh_method' in auto_params:
+                lsh_method = auto_params['lsh_method']
+            if use_lsh and 'num_perm' in auto_params:
+                num_perm = auto_params['num_perm']
+            if use_lsh and 'lsh_threshold' in auto_params:
+                lsh_threshold = auto_params['lsh_threshold']
+            if use_lsh and 'num_bands' in auto_params:
+                num_bands = auto_params['num_bands']
+            if use_lsh and 'rows_per_band' in auto_params:
+                rows_per_band = auto_params['rows_per_band']
+            if 'use_blocking' in auto_params and auto_params['use_blocking']:
+                if 'blocking_columns' in auto_params and auto_params['blocking_columns']:
+                    blocking_columns = auto_params['blocking_columns']
+                if 'blocking_method' in auto_params:
+                    blocking_method = auto_params['blocking_method']
+                if 'max_block_size' in auto_params:
+                    max_block_size = auto_params['max_block_size']
+    
     # For large datasets, set a reasonable maximum number of comparisons if not provided
-    if max_comparisons is None and len(df) > 10000:
+    if max_comparisons is None and len(df) > 10000 and not auto_mode:
         # Use quadratic scaling but with a cap
         max_comparisons = min(10000000, len(df) * 100)
         print(f"Auto-set max_comparisons to {max_comparisons} for large dataset")
         
+    # Check if progress tracking is available and requested
+    use_progress_tracking = show_progress and PROGRESS_TRACKING_AVAILABLE
+    
+    # If progress tracking is requested but not available, warn the user
+    if show_progress and not PROGRESS_TRACKING_AVAILABLE:
+        print("Warning: Progress tracking requested but not available. Install required dependencies.")
+    
+    # If evaluation is requested, make sure we have the necessary column and dependency
+    if evaluate or generate_report:
+        if not known_duplicate_column:
+            raise ValueError("known_duplicate_column must be provided for evaluation")
+        if not EVALUATION_AVAILABLE:
+            raise ImportError("Evaluation module not available. Make sure freamon.deduplication.evaluation is installed.")
+        if known_duplicate_column not in df.columns:
+            raise ValueError(f"Known duplicate column '{known_duplicate_column}' not found in dataframe")
+    
+    # If we're requesting evaluation, use the flag_and_evaluate function
+    if evaluate or generate_report:
+        return flag_and_evaluate(
+            df=df,
+            columns=columns,
+            known_duplicate_column=known_duplicate_column,
+            weights=weights,
+            threshold=threshold,
+            method=method,
+            flag_column=flag_column,
+            generate_report=generate_report,
+            report_format=report_format,
+            include_plots=include_plots,
+            auto_mode=auto_mode,
+            show_progress=show_progress,
+            inplace=inplace,
+            group_column=group_column,
+            similarity_column=similarity_column,
+            max_comparisons=max_comparisons,
+            chunk_size=chunk_size,
+            n_jobs=n_jobs,
+            use_polars=use_polars,
+            blocking_columns=blocking_columns,
+            blocking_method=blocking_method,
+            blocking_rules=blocking_rules,
+            max_block_size=max_block_size,
+            use_lsh=use_lsh,
+            lsh_method=lsh_method,
+            lsh_threshold=lsh_threshold,
+            num_perm=num_perm,
+            num_bands=num_bands,
+            rows_per_band=rows_per_band,
+            jupyter_mode=jupyter_mode,
+            memory_limit_gb=memory_limit_gb
+        )
+    
+    # Standard deduplication path (no evaluation)
     # If the dataset is small or chunking is not required, use the standard approach
     if chunk_size is None or len(df) <= chunk_size:
         return _flag_similar_records_standard(
@@ -1553,6 +1737,8 @@ def flag_similar_records(
             num_perm=num_perm,
             num_bands=num_bands,
             rows_per_band=rows_per_band,
+            show_progress=use_progress_tracking,
+            jupyter_mode=jupyter_mode,
         )
     else:
         # For larger datasets, use the chunked approach
@@ -1569,6 +1755,8 @@ def flag_similar_records(
             chunk_size=chunk_size,
             n_jobs=n_jobs,
             use_polars=use_polars,
+            show_progress=use_progress_tracking,
+            jupyter_mode=jupyter_mode,
         )
 
 
@@ -1594,6 +1782,8 @@ def _flag_similar_records_standard(
     num_perm: int = 128,
     num_bands: Optional[int] = None,
     rows_per_band: Optional[int] = None,
+    show_progress: bool = False,
+    jupyter_mode: Optional[bool] = None,
 ) -> Any:
     """
     Standard implementation of similar records flagging (non-chunked).
@@ -1793,6 +1983,16 @@ def _flag_similar_records_standard(
     edges_to_add = []
     similarity_dict = {}  # Maps (i, j) tuples to similarity scores
     
+    # Initialize progress tracking if requested
+    progress_tracker = None
+    if show_progress and PROGRESS_TRACKING_AVAILABLE:
+        progress_tracker = create_deduplication_tracker(
+            total_comparisons=comparisons_to_do,
+            description="Deduplication progress",
+            jupyter_mode=jupyter_mode
+        )
+        progress_tracker.start()
+    
     # Process batches
     pairs_processed = 0
     next_report = min(100000, comparisons_to_do // 10)  # Report progress at 10% intervals
@@ -1822,8 +2022,13 @@ def _flag_similar_records_standard(
             G.add_edges_from(edges_to_add)
             edges_to_add = []
         
-        # Report progress for large workloads
-        if pairs_processed >= next_report:
+        # Update progress tracker if active
+        if progress_tracker:
+            # Update progress less frequently to reduce overhead
+            if pairs_processed % 100 == 0:
+                progress_tracker.update(100)
+        # Legacy progress reporting for non-interactive mode
+        elif pairs_processed >= next_report:
             progress = (pairs_processed / comparisons_to_do) * 100
             print(f"Processed {pairs_processed:,} pairs ({progress:.1f}%)...")
             next_report += min(100000, comparisons_to_do // 10)
@@ -1831,6 +2036,14 @@ def _flag_similar_records_standard(
     # Add any remaining edges
     if edges_to_add:
         G.add_edges_from(edges_to_add)
+    
+    # Handle any remaining progress updates
+    if progress_tracker:
+        # Update remaining progress to 100%
+        remaining = comparisons_to_do - pairs_processed
+        if remaining > 0:
+            progress_tracker.update(remaining)
+        progress_tracker.finish()
     
     print(f"Finding connected components among {G.number_of_edges()} similar pairs...")
     
@@ -1910,6 +2123,8 @@ def _flag_similar_records_chunked(
     n_jobs: int = 1,
     use_polars: bool = False,
     max_comparisons: Optional[int] = None,
+    show_progress: bool = False,
+    jupyter_mode: Optional[bool] = None,
 ) -> Any:
     """
     Chunked implementation of similar records flagging for large datasets.
@@ -2094,6 +2309,16 @@ def _flag_similar_records_chunked(
     total_chunk_pairs = (n_chunks * (n_chunks + 1)) // 2
     print(f"Processing {total_chunk_pairs} chunk pairs...")
     
+    # Initialize progress tracking if requested
+    block_progress_tracker = None
+    if show_progress and PROGRESS_TRACKING_AVAILABLE:
+        block_progress_tracker = BlockProgressTracker(
+            total_blocks=total_chunk_pairs,
+            description="Deduplication block progress",
+            jupyter_mode=jupyter_mode
+        )
+        block_progress_tracker.start()
+    
     # Generate chunk pairs strategically
     # Start with within-chunk pairs (diagonal), which are more likely to have similarities
     # Then do between-chunk pairs
@@ -2107,6 +2332,120 @@ def _flag_similar_records_chunked(
     # Now put diagonal pairs first, then off-diagonal
     chunk_pairs = diagonal_pairs + off_diagonal_pairs
     
+    # Define process_chunk_pair function at module level to avoid pickling issues
+    def _global_process_chunk_pair(chunk1_idx, chunk2_idx, chunk_size, n_rows, pandas_df, columns, weights, method, threshold):
+        """
+        Global version of process_chunk_pair function that works with multiprocessing.
+        Extracted from the nested function to avoid pickling issues.
+        """
+        start1 = chunk1_idx * chunk_size
+        end1 = min((chunk1_idx + 1) * chunk_size, n_rows)
+        
+        start2 = chunk2_idx * chunk_size
+        end2 = min((chunk2_idx + 1) * chunk_size, n_rows)
+        
+        # Get just the columns we need
+        cols_subset = pandas_df[columns]
+        
+        chunk1 = cols_subset.iloc[start1:end1]
+        
+        # Initialize local results
+        edges = []
+        scores = {}
+        
+        # For within-chunk comparison
+        if chunk1_idx == chunk2_idx:
+            # Calculate max pairs for sampling
+            total_chunk_pairs = (len(chunk1) * (len(chunk1) - 1)) // 2
+            
+            # If max_comparisons is set, limit the pairs to compare within this chunk
+            chunk_max_pairs = None
+            if max_comparisons is not None:
+                # Proportionally allocate max_comparisons to this chunk
+                chunk_size_proportion = (end1 - start1) / n_rows
+                chunk_max_pairs = int(max_comparisons * chunk_size_proportion * chunk_size_proportion * n_chunks)
+                
+                # Make sure we have at least some pairs to compare
+                chunk_max_pairs = max(100, chunk_max_pairs)
+                chunk_max_pairs = min(chunk_max_pairs, total_chunk_pairs)
+            
+            # Generate pairs to compare - potentially with sampling
+            if chunk_max_pairs is not None and chunk_max_pairs < total_chunk_pairs:
+                import random
+                pairs = []
+                for i in range(len(chunk1)):
+                    for j in range(i+1, len(chunk1)):
+                        pairs.append((i, j))
+                random.shuffle(pairs)
+                chunk_pairs = pairs[:chunk_max_pairs]
+            else:
+                chunk_pairs = [(i, j) for i in range(len(chunk1)) for j in range(i+1, len(chunk1))]
+            
+            # Compare selected pairs
+            for i, j in chunk_pairs:
+                abs_i = start1 + i
+                abs_j = start1 + j
+                
+                row1 = chunk1.iloc[i]
+                row2 = chunk1.iloc[j]
+                
+                # Calculate similarity
+                similarity = _calculate_similarity(row1, row2, columns, weights, method)
+                
+                # Add edge if similarity is above threshold
+                if similarity >= threshold:
+                    edges.append((abs_i, abs_j))
+                    scores[(abs_i, abs_j)] = similarity
+        else:
+            # For between-chunk comparison
+            chunk2 = cols_subset.iloc[start2:end2]
+            
+            # Calculate max pairs for sampling
+            total_between_pairs = len(chunk1) * len(chunk2)
+            
+            # If max_comparisons is set, limit the pairs to compare between chunks
+            between_max_pairs = None
+            if max_comparisons is not None:
+                # Proportionally allocate max_comparisons to this chunk pair
+                chunk1_prop = (end1 - start1) / n_rows
+                chunk2_prop = (end2 - start2) / n_rows
+                between_max_pairs = int(max_comparisons * chunk1_prop * chunk2_prop * n_chunks * (n_chunks+1) / 2)
+                
+                # Make sure we have at least some pairs to compare
+                between_max_pairs = max(100, between_max_pairs)
+                between_max_pairs = min(between_max_pairs, total_between_pairs)
+            
+            # Generate pairs to compare - potentially with sampling
+            if between_max_pairs is not None and between_max_pairs < total_between_pairs:
+                import random
+                # Sample pairs to compare - more efficient for large chunks
+                chunk_pairs = []
+                for _ in range(between_max_pairs):
+                    i = random.randint(0, len(chunk1) - 1)
+                    j = random.randint(0, len(chunk2) - 1)
+                    chunk_pairs.append((i, j))
+            else:
+                chunk_pairs = [(i, j) for i in range(len(chunk1)) for j in range(len(chunk2))]
+            
+            # Compare selected pairs
+            for i, j in chunk_pairs:
+                abs_i = start1 + i
+                abs_j = start2 + j
+                
+                row1 = chunk1.iloc[i]
+                row2 = chunk2.iloc[j]
+                
+                # Calculate similarity
+                similarity = _calculate_similarity(row1, row2, columns, weights, method)
+                
+                # Add edge if similarity is above threshold
+                if similarity >= threshold:
+                    edges.append((abs_i, abs_j))
+                    scores[(abs_i, abs_j)] = similarity
+        
+        # Return results for this chunk pair
+        return edges, scores
+    
     # Process chunks
     if n_jobs > 1 and n_chunks > 1:
         print(f"Processing chunk pairs in parallel with {n_jobs} workers...")
@@ -2115,8 +2454,16 @@ def _flag_similar_records_chunked(
         all_scores = {}
         
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-            # Submit all jobs
-            future_to_pair = {executor.submit(process_chunk_pair, i, j): (i, j) for i, j in chunk_pairs}
+            # Submit all jobs using the global function instead of the nested one
+            future_to_pair = {
+                executor.submit(
+                    _global_process_chunk_pair, 
+                    i, j, 
+                    chunk_size, n_rows, 
+                    pandas_df, columns, 
+                    weights, method, threshold
+                ): (i, j) for i, j in chunk_pairs
+            }
             
             # Process results as they complete
             for idx, future in enumerate(as_completed(future_to_pair)):
@@ -2129,18 +2476,21 @@ def _flag_similar_records_chunked(
                         all_edges.extend(edges)
                         all_scores.update(scores)
                     
-                    # Report progress
-                    if (idx + 1) % max(1, total_chunk_pairs // 10) == 0:
+                    # Update progress tracking
+                    if block_progress_tracker:
+                        block_progress_tracker.update(1, force_display=False)
+                    # Legacy progress reporting for non-interactive mode
+                    elif (idx + 1) % max(1, total_chunk_pairs // 10) == 0:
                         progress = ((idx + 1) / total_chunk_pairs) * 100
                         print(f"Processed {idx + 1}/{total_chunk_pairs} chunk pairs ({progress:.1f}%)...")
                         print(f"Found {len(all_edges)} similar pairs so far")
-                        
-                        # Add edges to graph in batches to avoid memory spikes
-                        if len(all_edges) > 100000:
-                            G.add_edges_from(all_edges)
-                            all_edges = []
-                            # Force garbage collection
-                            gc.collect()
+                    
+                    # Add edges to graph in batches to avoid memory spikes
+                    if len(all_edges) > 100000:
+                        G.add_edges_from(all_edges)
+                        all_edges = []
+                        # Force garbage collection
+                        gc.collect()
                             
                 except Exception as e:
                     print(f"Error processing chunk pair ({i}, {j}): {str(e)}")
@@ -2158,18 +2508,29 @@ def _flag_similar_records_chunked(
                 all_edges.extend(edges)
                 all_scores.update(scores)
             
-            # Report progress
-            if (idx + 1) % max(1, total_chunk_pairs // 10) == 0:
+            # Update progress tracking
+            if block_progress_tracker:
+                # Create a chunk progress tracker for detailed tracking within each chunk
+                chunk_size_i = chunks[i][1] - chunks[i][0]
+                chunk_size_j = chunks[j][1] - chunks[j][0]
+                chunk_size = chunk_size_i * chunk_size_j if i != j else (chunk_size_i * (chunk_size_i - 1)) // 2
+                chunk_tracker = block_progress_tracker.start_block(idx+1, chunk_size, f"Chunk ({i+1},{j+1})")
+                chunk_tracker.finish()  # Since we're processing this synchronously
+                
+                # Update the main tracker
+                block_progress_tracker.update(1, force_display=True)  # Force display to update
+            # Legacy progress reporting for non-interactive mode
+            elif (idx + 1) % max(1, total_chunk_pairs // 10) == 0:
                 progress = ((idx + 1) / total_chunk_pairs) * 100
                 print(f"Processed {idx + 1}/{total_chunk_pairs} chunk pairs ({progress:.1f}%)...")
                 print(f"Found {len(all_edges)} similar pairs so far")
-                
-                # Add edges to graph in batches to avoid memory spikes
-                if len(all_edges) > 100000:
-                    G.add_edges_from(all_edges)
-                    all_edges = []
-                    # Force garbage collection
-                    gc.collect()
+            
+            # Add edges to graph in batches to avoid memory spikes
+            if len(all_edges) > 100000:
+                G.add_edges_from(all_edges)
+                all_edges = []
+                # Force garbage collection
+                gc.collect()
     
     # Add any remaining edges to the graph
     if all_edges:
@@ -2178,6 +2539,10 @@ def _flag_similar_records_chunked(
     # Clear memory we no longer need
     del all_edges
     gc.collect()
+    
+    # Finalize progress tracking
+    if block_progress_tracker:
+        block_progress_tracker.finish()
     
     print(f"Finding connected components among {G.number_of_edges()} similar pairs...")
     
