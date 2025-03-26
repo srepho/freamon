@@ -999,6 +999,330 @@ class EDAAnalyzer:
         
         return result
         
+    def display_eda_report(self):
+        """
+        Display a concise EDA report in a Jupyter notebook.
+        
+        This method generates a visual report showing key information about the dataset:
+        - Variable names and data types
+        - Missing value counts and percentages
+        - Cardinality (number of unique values)
+        - Correlations between numeric variables
+        - Correlations between missing values
+        - Statistical tests for relationship with target variable (if provided)
+        
+        Returns
+        -------
+        display_obj
+            A formatted display object for Jupyter notebooks
+        
+        Examples
+        --------
+        >>> analyzer = EDAAnalyzer(df, target_column='target')
+        >>> analyzer.run_full_analysis()
+        >>> analyzer.display_eda_report()
+        """
+        # Ensure analysis has been performed
+        if not hasattr(self, 'analysis_results') or not self.analysis_results:
+            self.run_full_analysis()
+            
+        # Import required libraries
+        import pandas as pd
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from IPython.display import display, HTML
+        from scipy import stats
+        
+        # Function to safely check if we're in a notebook
+        def is_notebook():
+            try:
+                from IPython import get_ipython
+                if 'IPKernelApp' not in get_ipython().config:
+                    return False
+            except:
+                return False
+            return True
+        
+        if not is_notebook():
+            print("This method is designed for Jupyter notebooks. Use generate_report() for other environments.")
+            return
+            
+        # Create a dataframe with column information
+        columns_info = []
+        
+        for col in self.df.columns:
+            # Basic info
+            col_type = str(self.df[col].dtype)
+            missing_count = self.df[col].isna().sum()
+            missing_pct = missing_count / len(self.df) * 100
+            cardinality = self.df[col].nunique()
+            cardinality_pct = cardinality / len(self.df) * 100
+            
+            # Determine if numeric, categorical, text or date
+            if col in self.numeric_columns:
+                col_category = "numeric"
+            elif col in self.datetime_columns:
+                col_category = "datetime"
+            elif col in self.categorical_columns:
+                if cardinality < 20 or (cardinality_pct < 5 and cardinality < 100):
+                    col_category = "categorical"
+                elif self.df[col].dtype == 'object' and self.df[col].astype(str).str.len().mean() > 20:
+                    col_category = "text"
+                else:
+                    col_category = "categorical"
+            else:
+                if pd.api.types.is_numeric_dtype(self.df[col]):
+                    col_category = "numeric"
+                elif pd.api.types.is_datetime64_dtype(self.df[col]):
+                    col_category = "datetime"
+                elif cardinality < 20 or (cardinality_pct < 5 and cardinality < 100):
+                    col_category = "categorical"
+                elif self.df[col].dtype == 'object' and self.df[col].astype(str).str.len().mean() > 20:
+                    col_category = "text"
+                else:
+                    col_category = "categorical"
+                
+            # Relation with target (if available)
+            target_relation = None
+            p_value = None
+            if self.target_column and col != self.target_column:
+                if col_category == "numeric" and pd.api.types.is_numeric_dtype(self.df[self.target_column]):
+                    # Numeric vs numeric: correlation
+                    corr = self.df[col].corr(self.df[self.target_column])
+                    target_relation = f"Corr: {corr:.3f}"
+                    
+                elif col_category == "numeric" and not pd.api.types.is_numeric_dtype(self.df[self.target_column]):
+                    # Numeric vs categorical: ANOVA
+                    groups = self.df.groupby(self.target_column)[col].apply(list)
+                    valid_groups = [g for g in groups if len(g) > 0]
+                    if len(valid_groups) >= 2:
+                        try:
+                            f_val, p_val = stats.f_oneway(*valid_groups)
+                            target_relation = f"ANOVA: {p_val:.3f}"
+                            p_value = p_val
+                        except:
+                            target_relation = "ANOVA: error"
+                    
+                elif col_category in ["categorical", "text"] and pd.api.types.is_numeric_dtype(self.df[self.target_column]):
+                    # Categorical vs numeric: ANOVA
+                    groups = self.df.groupby(col)[self.target_column].apply(list)
+                    valid_groups = [g for g in groups if len(g) > 0]
+                    if len(valid_groups) >= 2:
+                        try:
+                            f_val, p_val = stats.f_oneway(*valid_groups)
+                            target_relation = f"ANOVA: {p_val:.3f}"
+                            p_value = p_val
+                        except:
+                            target_relation = "ANOVA: error"
+                    
+                elif col_category in ["categorical", "text"] and not pd.api.types.is_numeric_dtype(self.df[self.target_column]):
+                    # Categorical vs categorical: Chi-square
+                    try:
+                        contingency = pd.crosstab(self.df[col], self.df[self.target_column])
+                        chi2, p, _, _ = stats.chi2_contingency(contingency)
+                        target_relation = f"Chi²: {p:.3f}"
+                        p_value = p
+                    except:
+                        target_relation = "Chi²: error"
+            
+            columns_info.append({
+                "Column": col,
+                "Type": col_type,
+                "Category": col_category,
+                "Missing": missing_count,
+                "Missing %": missing_pct,
+                "Cardinality": cardinality,
+                "Cardinality %": cardinality_pct,
+                "Target Relation": target_relation,
+                "P-value": p_value
+            })
+            
+        # Create and style DataFrame
+        info_df = pd.DataFrame(columns_info)
+        
+        # Apply styling
+        def style_missing(val):
+            if isinstance(val, float) and not np.isnan(val):
+                if val > 50:
+                    return 'background-color: #ffcccc'
+                elif val > 20:
+                    return 'background-color: #ffffcc'
+                else:
+                    return ''
+            return ''
+        
+        def style_cardinality(val):
+            if isinstance(val, float) and not np.isnan(val):
+                if val > 95:
+                    return 'background-color: #ffffcc'
+                else:
+                    return ''
+            return ''
+        
+        def style_p_value(val):
+            if isinstance(val, float) and not np.isnan(val):
+                if val < 0.01:
+                    return 'background-color: #ccffcc; font-weight: bold'
+                elif val < 0.05:
+                    return 'background-color: #e6ffcc'
+                else:
+                    return ''
+            return ''
+        
+        # Apply styling
+        styled_df = info_df.style.format({
+            'Missing %': '{:.1f}%',
+            'Cardinality %': '{:.1f}%',
+        }).applymap(style_missing, subset=['Missing %']) \
+          .applymap(style_cardinality, subset=['Cardinality %']) \
+          .applymap(style_p_value, subset=['P-value'])
+        
+        # Display the analysis header
+        display(HTML("<h2>EDA Report: Column Analysis</h2>"))
+        display(HTML(f"<p>Dataset shape: {self.df.shape[0]} rows × {self.df.shape[1]} columns</p>"))
+        
+        # Display column info
+        display(styled_df)
+        
+        # Get correlations if there are numeric columns
+        numeric_cols = info_df[info_df['Category'] == 'numeric']['Column'].tolist()
+        if len(numeric_cols) > 1:
+            display(HTML("<h3>Correlation Analysis</h3>"))
+            
+            # Calculate correlation matrix
+            corr_matrix = self.df[numeric_cols].corr()
+            
+            # Plot heatmap
+            plt.figure(figsize=(10, 8))
+            mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+            sns.heatmap(corr_matrix, mask=mask, annot=len(numeric_cols) < 10, 
+                        fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1, cbar=True,
+                        linewidths=0.5)
+            plt.title('Correlation Heatmap')
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            plt.show()
+            
+            # Show top correlations
+            corr_pairs = []
+            for i in range(len(numeric_cols)):
+                for j in range(i+1, len(numeric_cols)):
+                    col1 = numeric_cols[i]
+                    col2 = numeric_cols[j]
+                    corr = corr_matrix.loc[col1, col2]
+                    if not np.isnan(corr):
+                        corr_pairs.append((col1, col2, corr))
+            
+            if corr_pairs:
+                # Sort by absolute correlation
+                corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+                
+                # Create a dataframe for top correlations
+                top_n = min(15, len(corr_pairs))
+                top_corr = pd.DataFrame(corr_pairs[:top_n], columns=['Variable 1', 'Variable 2', 'Correlation'])
+                
+                # Add interpretation
+                def interpret_corr(val):
+                    if abs(val) >= 0.8:
+                        return "Very strong"
+                    elif abs(val) >= 0.6:
+                        return "Strong"
+                    elif abs(val) >= 0.4:
+                        return "Moderate"
+                    elif abs(val) >= 0.2:
+                        return "Weak"
+                    else:
+                        return "Very weak"
+                
+                top_corr['Strength'] = top_corr['Correlation'].apply(interpret_corr)
+                top_corr['Direction'] = top_corr['Correlation'].apply(lambda x: "Positive" if x > 0 else "Negative")
+                
+                # Style the correlations dataframe
+                def style_corr(val):
+                    if val >= 0.8:
+                        return 'background-color: #ccffcc; font-weight: bold'
+                    elif val >= 0.6:
+                        return 'background-color: #e6ffcc'
+                    elif val <= -0.8:
+                        return 'background-color: #ffcccc; font-weight: bold'
+                    elif val <= -0.6:
+                        return 'background-color: #ffdddd'
+                    else:
+                        return ''
+                
+                styled_corr = top_corr.style.format({
+                    'Correlation': '{:.3f}'
+                }).applymap(style_corr, subset=['Correlation'])
+                
+                display(HTML("<h4>Top Correlations</h4>"))
+                display(styled_corr)
+        
+        # Missing value correlation analysis if there are columns with missing values
+        missing_cols = info_df[info_df['Missing'] > 0]['Column'].tolist()
+        if len(missing_cols) > 1:
+            display(HTML("<h3>Missing Value Correlation</h3>"))
+            display(HTML("<p>This shows which columns tend to have missing values together.</p>"))
+            
+            # Create missing indicators
+            missing_data = self.df[missing_cols].isna()
+            
+            # Calculate correlation matrix of missing indicators
+            missing_corr = missing_data.corr()
+            
+            # Plot heatmap
+            plt.figure(figsize=(10, 8))
+            mask = np.triu(np.ones_like(missing_corr, dtype=bool))
+            sns.heatmap(missing_corr, mask=mask, annot=len(missing_cols) < 10, 
+                      fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1, cbar=True,
+                      linewidths=0.5)
+            plt.title('Missing Value Correlation')
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            plt.show()
+            
+            # Show top missing value correlations
+            missing_corr_pairs = []
+            for i in range(len(missing_cols)):
+                for j in range(i+1, len(missing_cols)):
+                    col1 = missing_cols[i]
+                    col2 = missing_cols[j]
+                    corr = missing_corr.loc[col1, col2]
+                    if not np.isnan(corr):
+                        missing_corr_pairs.append((col1, col2, corr))
+            
+            if missing_corr_pairs:
+                # Sort by absolute correlation
+                missing_corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+                
+                # Create a dataframe for top correlations
+                top_n = min(10, len(missing_corr_pairs))
+                top_missing = pd.DataFrame(missing_corr_pairs[:top_n], 
+                                         columns=['Column 1', 'Column 2', 'Correlation'])
+                
+                # Only show meaningful correlations
+                top_missing = top_missing[abs(top_missing['Correlation']) > 0.1]
+                
+                if not top_missing.empty:
+                    # Style the dataframe
+                    styled_missing = top_missing.style.format({
+                        'Correlation': '{:.3f}'
+                    }).applymap(style_corr, subset=['Correlation'])
+                    
+                    display(HTML("<h4>Top Missing Value Correlations</h4>"))
+                    display(styled_missing)
+                    
+                    # Add interpretation for strong correlations
+                    for _, row in top_missing.iterrows():
+                        if abs(row['Correlation']) > 0.7:
+                            if row['Correlation'] > 0:
+                                display(HTML(f"<p><strong>Strong positive correlation</strong>: When {row['Column 1']} is missing, {row['Column 2']} is very likely to be missing too</p>"))
+                            else:
+                                display(HTML(f"<p><strong>Strong negative correlation</strong>: When {row['Column 1']} is missing, {row['Column 2']} is very likely to be present</p>"))
+        
+        # Return None since the display is handled by IPython
+        return None
+        
     def run_full_analysis(
         self,
         output_path: Optional[str] = None,

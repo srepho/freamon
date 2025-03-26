@@ -1,5 +1,24 @@
 # Changelog
 
+## Version 0.3.41
+* Improved memory efficiency in deduplication module:
+  * Added missing parameters to `flag_similar_records` function for better backward compatibility
+  * Enhanced memory optimization for large dataset processing
+  * Implemented generator-based pair creation instead of storing all pairs in memory
+  * Added batch processing for record comparisons
+  * Improved garbage collection during intensive operations
+  * Added strategic processing order for duplicate detection
+  * Enhanced parallel processing with configurable workers
+  * Added progress reporting for long-running operations
+  * Implemented adaptive chunk size reduction for very large datasets
+  * Added proportional sampling across chunks when using limits
+* Documentation and examples:
+  * Created comprehensive examples demonstrating memory-efficient deduplication
+  * Added benchmarking tools to compare different approaches
+  * Updated documentation with parameter explanations and best practices
+  * Added visualization capabilities for duplicate group analysis
+  * Fixed documentation to reflect current parameter names
+
 ## Version 0.3.40
 * Added comprehensive documentation and examples:
   * Created detailed examples for duplicate flagging functionality
@@ -13,17 +32,20 @@
   * Added notebook-friendly examples with interactive visualizations
   * Improved display capabilities for deduplication reporting
   * Added comprehensive workflow examples in a notebook-friendly format
+  * Added display_eda_report method for interactive EDA reports in Jupyter
 * Features include:
   * Streamlined installation instructions with dependency groups
   * Clearer documentation of optional feature requirements
   * Examples showing integration between different modules
   * Performance optimization guidance for large datasets
   * Detailed examples of advanced features
+  * Interactive visualized EDA reports for Jupyter notebooks
 * Improved user experience:
   * Added complete workflow examples from data loading to modeling
   * Better explanations of component interactions
   * Clearer API documentation with usage examples
   * More comprehensive examples showing real-world use cases
+  * Quick reports for exploratory analysis in interactive environments
 
 ## Version 0.3.39
 * Added duplicate flagging functionality:

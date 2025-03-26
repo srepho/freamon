@@ -13,7 +13,7 @@ Freamon is a comprehensive Python toolkit for exploratory data analysis, feature
 
 ## Features
 
-- **Exploratory Data Analysis**: Automatic EDA with comprehensive reporting in HTML, Markdown, Excel, PowerPoint, and Jupyter notebooks
+- **Exploratory Data Analysis**: Automatic EDA with comprehensive reporting in HTML, Markdown, Excel, PowerPoint, and interactive Jupyter notebook displays
 - **Advanced Multivariate Analysis**: PCA visualization, correlation networks, and target-oriented analysis
 - **Feature Engineering**: Advanced feature engineering for numeric, categorical, and text data
 - **Feature Selection**: Statistical feature selection including Chi-square, ANOVA F-test, and effect size analysis
@@ -391,10 +391,9 @@ similar_df = flag_similar_records(
     columns=['name', 'address', 'phone', 'email'],
     weights={'name': 0.4, 'address': 0.3, 'phone': 0.2, 'email': 0.1},
     threshold=0.7,
-    add_similarity_score=True,
-    add_group_id=True,
-    group_id_column="multifield_group_id",
-    duplicate_flag_column="is_multifield_duplicate"
+    similarity_column="similarity_score",  # Column to store similarity scores
+    group_column="multifield_group_id",    # Column to store group IDs
+    flag_column="is_multifield_duplicate"  # Column to store duplicate flags
 )
 
 # 5. Analyze multi-field similarity results
@@ -542,6 +541,9 @@ analyzer.run_full_analysis()
 analyzer.generate_report('report.html')  # HTML report
 analyzer.generate_report('report.md', format='markdown')  # Markdown report
 analyzer.generate_report('report.md', format='markdown', convert_to_html=True)  # Both formats
+
+# For Jupyter notebooks, display interactive report
+analyzer.display_eda_report()  # Interactive display in notebook
 ```
 
 ## Documentation
@@ -554,6 +556,7 @@ For more detailed information, refer to the examples directory and the following
 - [Advanced EDA Features](README_ADVANCED_EDA.md)
 - [Auto-Split Modeling](README_AUTO_SPLIT.md)
 - [Export Capabilities](README_EXPORT.md)
+- [Jupyter Display](README_JUPYTER_DISPLAY.md)
 
 ## License
 
