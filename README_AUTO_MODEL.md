@@ -64,10 +64,14 @@ model = results['model']  # The trained model
 metrics = results['test_metrics']  # Evaluation metrics
 importance = results['feature_importance']  # Feature importance
 
-# Plot feature importance
+# Plot feature importance manually using the feature importance DataFrame
 import matplotlib.pyplot as plt
 plt.figure(figsize=(10, 6))
-results['autoflow'].plot_importance(top_n=15)
+sorted_importance = results['feature_importance'].sort_values(by='importance', ascending=False).head(15)
+plt.barh(sorted_importance['feature'], sorted_importance['importance'])
+plt.title('Feature Importance')
+plt.xlabel('Importance')
+plt.ylabel('Feature')
 plt.tight_layout()
 plt.savefig("feature_importance.png")
 ```
