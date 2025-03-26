@@ -193,7 +193,11 @@ for metric, value in results['test_metrics'].items():
 
 # Plot feature importance
 plt.figure(figsize=(8, 5))
-results['autoflow'].plot_importance()
+sorted_importance = results['feature_importance'].sort_values(by='importance', ascending=False)
+plt.barh(sorted_importance['feature'], sorted_importance['importance'])
+plt.title('Feature Importance')
+plt.xlabel('Importance')
+plt.ylabel('Feature')
 plt.tight_layout()
 plt.savefig("classification_feature_importance.png")
 ```
@@ -230,6 +234,75 @@ The `auto_model` function returns a dictionary with:
 - `text_topics`: Topic models for text columns (if text columns provided)
 - `test_df`: Test DataFrame with predictions
 - `X_train`, `X_test`, `y_train`, `y_test`: Training and test data splits
+
+## Using the Trained Model for Predictions
+
+After training your model with `auto_model`, you can use it to make predictions on new data. There are two ways to do this:
+
+### Method 1: Using the Model Directly
+
+```python
+# Get the trained model from results
+model = results['model']
+
+# Prepare new data (must have the same columns as training data, except target)
+new_data = pd.read_csv("new_data.csv")
+
+# Make predictions
+predictions = model.predict(new_data)
+print("Predictions:", predictions[:5])
+
+# For classification, you can also get probabilities
+if hasattr(model, 'predict_proba'):
+    probabilities = model.predict_proba(new_data)
+    print("Probabilities for first 5 samples:")
+    print(probabilities[:5])
+```
+
+### Method 2: Using the AutoModelFlow Instance
+
+The `autoflow` object handles all the preprocessing steps automatically, making it safer when dealing with text or time series data:
+
+```python
+# Get the AutoModelFlow instance
+autoflow = results['autoflow']
+
+# Prepare new data (must have the same columns as training data, including text/date columns)
+new_data = pd.read_csv("new_data.csv")
+
+# For time series data, ensure date column is datetime
+if 'date' in new_data.columns:
+    new_data['date'] = pd.to_datetime(new_data['date'])
+
+# Make predictions - this will handle text processing and feature engineering automatically
+predictions = autoflow.predict(new_data)
+print("Predictions:", predictions[:5])
+
+# For classification, get probabilities
+if autoflow.problem_type == 'classification':
+    probabilities = autoflow.predict_proba(new_data)
+    print("Probabilities for first 5 samples:")
+    print(probabilities[:5])
+```
+
+### Saving and Loading the Model
+
+To save the model for later use:
+
+```python
+import pickle
+
+# Save the entire AutoModelFlow object (recommended)
+with open('autoflow_model.pkl', 'wb') as f:
+    pickle.dump(results['autoflow'], f)
+
+# Later, load the model
+with open('autoflow_model.pkl', 'rb') as f:
+    loaded_autoflow = pickle.load(f)
+
+# Use the loaded model
+predictions = loaded_autoflow.predict(new_data)
+```
 
 ## Troubleshooting
 
