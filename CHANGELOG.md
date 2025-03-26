@@ -1,5 +1,30 @@
 # Changelog
 
+## Version 0.3.40
+* Added comprehensive documentation and examples:
+  * Created detailed examples for duplicate flagging functionality
+  * Added documentation for advanced EDA features
+  * Added documentation for automatic train-test splitting in automodeling
+  * Added export capabilities documentation for PowerPoint and Excel
+  * Enhanced README with improved dependency information and examples
+  * Added cross-references between documentation files for better discoverability
+  * Added examples demonstrating complete end-to-end workflows
+* Enhanced Jupyter notebook integration:
+  * Added notebook-friendly examples with interactive visualizations
+  * Improved display capabilities for deduplication reporting
+  * Added comprehensive workflow examples in a notebook-friendly format
+* Features include:
+  * Streamlined installation instructions with dependency groups
+  * Clearer documentation of optional feature requirements
+  * Examples showing integration between different modules
+  * Performance optimization guidance for large datasets
+  * Detailed examples of advanced features
+* Improved user experience:
+  * Added complete workflow examples from data loading to modeling
+  * Better explanations of component interactions
+  * Clearer API documentation with usage examples
+  * More comprehensive examples showing real-world use cases
+
 ## Version 0.3.39
 * Added duplicate flagging functionality:
   * `flag_exact_duplicates()` to identify exact matches across specified columns

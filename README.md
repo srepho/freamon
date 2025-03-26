@@ -9,6 +9,8 @@
 
 Freamon is a comprehensive Python toolkit for exploratory data analysis, feature engineering, and model development with a focus on practical data science workflows.
 
+**[Quick Start](QUICK_START.md)** | **[Documentation](#documentation)** | **[Installation](#installation)** | **[Examples](#key-components)**
+
 ## Features
 
 - **Exploratory Data Analysis**: Automatic EDA with comprehensive reporting in HTML, Markdown, Excel, PowerPoint, and Jupyter notebooks
