@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 0.3.49
+* Enhanced model type support in hyperparameter tuning:
+  * Added support for shorthand model types like 'lgbm_classifier' and 'lgbm_regressor'
+  * Improved error messages with list of supported model types
+  * Unified handling of direct and shorthand model types in tuning pipeline
+
 ## Version 0.3.48
 * Fixed critical bugs in auto_model functionality:
   * Fixed parameter handling in LightGBM classifier to prevent "unexpected keyword argument 'early_stopping_rounds'" error
