@@ -1,5 +1,39 @@
 # Changelog
 
+## Version 0.3.46
+* Added enhanced deduplication reporting system:
+  * Implemented comprehensive HTML reports with detailed statistics and visualizations
+  * Created Markdown reports summarizing deduplication results
+  * Added Excel export with detailed duplicate pairs and similarity scores
+  * Implemented PowerPoint report generation for presentations
+  * Added special Jupyter notebook rendering for interactive exploration
+  * Implemented interactive visualizations with threshold sensitivity analysis
+  * Added business impact analysis for optimal threshold selection
+  * Created cohesive reporting class with multiple export formats
+  * Added examples demonstrating the enhanced reporting capabilities
+
+## Version 0.3.45
+* Added advanced LSH algorithms and evaluation capabilities:
+  * Implemented SimHash for efficient text similarity
+  * Added BKTree for edit distance similarity search
+  * Implemented SuperMinHash for more efficient similarity signatures
+  * Added evaluation with known duplicate flags for measuring accuracy
+  * Implemented precision, recall, and F1 score calculations
+  * Added confusion matrix visualization for duplicate detection
+  * Created threshold sensitivity analysis for finding optimal thresholds
+  * Implemented advanced LSH method comparison utility
+  * Added comprehensive examples for all new functionality
+
+## Version 0.3.44
+* Added interactive progress tracking for deduplication:
+  * Implemented real-time progress indicators for Jupyter notebooks
+  * Added ETA calculations based on completed comparisons
+  * Added block processing progress tracking for chunked processing
+  * Implemented memory usage monitoring
+  * Created examples demonstrating the progress tracking functionality
+  * Added dependencies for Jupyter integration (ipython, ipywidgets)
+  * Added psutil dependency for memory tracking
+
 ## Version 0.3.43
 * Added blocking and LSH functionality to `flag_similar_records`:
   * Implemented blocking for faster deduplication based on exact column matches

@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="freamon",
-    version="0.3.43",
+    version="0.3.46",
     packages=find_packages(),
     install_requires=[
         "numpy",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
-version = "0.3.43"
+version = "0.3.46"
 authors = [
     {name = "Stephen Oates", email = "stephen.j.a.oates@gmail.com"},
 ]
@@ -27,6 +27,7 @@ dependencies = [
     "matplotlib>=3.5.0",
     "seaborn>=0.11.0",
     "networkx>=3.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +37,21 @@ lsh = [
 
 phonetic = [
     "jellyfish>=0.9.0",
+]
+
+jupyter = [
+    "ipython>=8.0.0",
+    "ipywidgets>=8.0.0",
+]
+
+enhanced_reporting = [
+    "ipython>=8.0.0",
+    "ipywidgets>=8.0.0",
+    "openpyxl>=3.0.0",
+    "python-pptx>=0.6.0",
+    "plotly>=5.0.0",
+    "jinja2>=3.0.0",
+    "markdown>=3.4.0",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -104,11 +120,11 @@ topic_modeling = [
 ]
 
 all = [
-    "freamon[extended,word_embeddings,topic_modeling,performance,markdown_reports]",
+    "freamon[extended,word_embeddings,topic_modeling,performance,markdown_reports,enhanced_reporting,lsh,phonetic,jupyter]",
 ]
 
 full = [
-    "freamon[extended,dev,word_embeddings,topic_modeling,performance,markdown_reports]",
+    "freamon[extended,dev,word_embeddings,topic_modeling,performance,markdown_reports,enhanced_reporting,lsh,phonetic,jupyter]",
 ]
 
 [tool.pytest.ini_options]

@@ -61,6 +61,43 @@ from freamon.deduplication.polars_supervised_deduplication import (
     PolarsSupervisedDeduplicationModel
 )
 
+# Import evaluation functionality if available
+try:
+    from freamon.deduplication.evaluation import (
+        calculate_deduplication_metrics,
+        plot_confusion_matrix,
+        evaluate_threshold_sensitivity,
+        generate_evaluation_report,
+        flag_and_evaluate
+    )
+    has_evaluation = True
+except ImportError:
+    has_evaluation = False
+
+# Import advanced LSH functionality if available
+try:
+    from freamon.deduplication.advanced_lsh import (
+        SimHash,
+        BKTree,
+        SuperMinHash,
+        flag_similar_records_advanced_lsh,
+        compare_lsh_methods
+    )
+    has_advanced_lsh = True
+except ImportError:
+    has_advanced_lsh = False
+
+# Import enhanced reporting functionality if available
+try:
+    from freamon.deduplication.enhanced_reporting import (
+        EnhancedDeduplicationReport,
+        generate_enhanced_report,
+        display_jupyter_report
+    )
+    has_enhanced_reporting = True
+except ImportError:
+    has_enhanced_reporting = False
+
 __all__ = [
     # Exact deduplication
     'hash_deduplication',
@@ -107,5 +144,36 @@ __all__ = [
     'batch_create_minhash_signatures',
     
     # Polars-optimized supervised deduplication
-    'PolarsSupervisedDeduplicationModel'
+    'PolarsSupervisedDeduplicationModel',
 ]
+
+# Add evaluation functions to __all__ if available
+if has_evaluation:
+    __all__.extend([
+        # Evaluation functionality
+        'calculate_deduplication_metrics',
+        'plot_confusion_matrix',
+        'evaluate_threshold_sensitivity',
+        'generate_evaluation_report',
+        'flag_and_evaluate'
+    ])
+
+# Add advanced LSH functions to __all__ if available
+if has_advanced_lsh:
+    __all__.extend([
+        # Advanced LSH functionality
+        'SimHash',
+        'BKTree',
+        'SuperMinHash',
+        'flag_similar_records_advanced_lsh',
+        'compare_lsh_methods'
+    ])
+
+# Add enhanced reporting functions to __all__ if available
+if has_enhanced_reporting:
+    __all__.extend([
+        # Enhanced reporting functionality
+        'EnhancedDeduplicationReport',
+        'generate_enhanced_report',
+        'display_jupyter_report'
+    ])
