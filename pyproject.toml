@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "freamon"
-version = "0.3.33"
+version = "0.3.39"
 authors = [
     {name = "Stephen Oates", email = "stephen.j.a.oates@gmail.com"},
 ]
@@ -48,6 +48,7 @@ dev = [
 
 markdown_reports = [
     "markdown>=3.4.0",
+    "networkx>=3.0",
 ]
 
 extended = [
