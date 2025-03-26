@@ -1376,7 +1376,7 @@ def _flag_text_duplicates_streaming_polars(
 
 def flag_similar_records(
     df: Any,
-    columns: List[str],
+    columns: Optional[List[str]] = None,
     weights: Optional[Dict[str, float]] = None,
     threshold: float = 0.8,
     method: str = 'composite',
@@ -1388,6 +1388,14 @@ def flag_similar_records(
     chunk_size: Optional[int] = None,
     n_jobs: int = 1,
     use_polars: bool = False,
+    
+    # New parameters for text handling
+    auto_detect_columns: bool = False,
+    text_columns: Optional[List[str]] = None,
+    text_method: str = 'fuzzy',
+    text_threshold: Optional[float] = None,
+    min_text_length: int = 20,
+    text_weight_boost: float = 1.5,
     
     # New parameters for blocking
     blocking_columns: Optional[List[str]] = None,
@@ -1426,13 +1434,15 @@ def flag_similar_records(
 ) -> Any:
     """
     Flag similar records based on multiple columns with customizable weights.
+    Automatically detects and handles text columns with specialized processing.
     
     Parameters
     ----------
     df : Any
         The dataframe to process. Can be pandas, polars, or dask.
-    columns : List[str]
-        Columns to consider when calculating similarity.
+    columns : Optional[List[str]], default=None
+        Columns to consider when calculating similarity. If None and auto_detect_columns=True,
+        all columns will be analyzed and appropriate ones selected automatically.
     weights : Optional[Dict[str, float]], default=None
         Dictionary mapping column names to their weights in similarity calculation.
         If None, all columns are weighted equally.
@@ -1462,6 +1472,25 @@ def flag_similar_records(
         Only used when chunk_size is specified.
     use_polars : bool, default=False
         Whether to use polars for faster processing. Requires polars to be installed.
+    auto_detect_columns : bool, default=False
+        Whether to automatically detect which columns to use for similarity calculation.
+        If True and columns=None, will select appropriate columns from the dataframe.
+    text_columns : Optional[List[str]], default=None
+        Columns that should be processed as text fields with specialized text similarity methods.
+        If None, text columns are auto-detected when auto_detect_columns=True.
+    text_method : str, default='fuzzy'
+        Method to use for text similarity calculation:
+        - 'fuzzy': Levenshtein-based fuzzy matching (good for short-medium text)
+        - 'tfidf': TF-IDF vectorization with cosine similarity (good for longer text)
+        - 'ngram': N-gram Jaccard similarity (faster than fuzzy for longer text)
+        - 'lsh': Locality-sensitive hashing for text (fast for very large text fields)
+    text_threshold : Optional[float], default=None
+        Similarity threshold for text columns. If None, uses the main threshold value.
+    min_text_length : int, default=20
+        Minimum average length of text content to be considered a long-form text field
+        requiring specialized text similarity methods.
+    text_weight_boost : float, default=1.5
+        Factor to boost weights for long text fields when auto-weighting is used.
     blocking_columns : Optional[List[str]], default=None
         Columns to use for blocking. Records in different blocks won't be compared.
         Significantly speeds up processing for large datasets.
@@ -1591,6 +1620,130 @@ def flag_similar_records(
     if add_similarity_score and similarity_column is None:
         similarity_column = 'similarity_score'
     
+    # Check if we need to auto-detect columns
+    if auto_detect_columns and columns is None:
+        # Convert to pandas for detection
+        df_type = check_dataframe_type(df)
+        if df_type != 'pandas':
+            pandas_df = convert_dataframe(df, 'pandas')
+        else:
+            pandas_df = df.copy() if not inplace else df
+            
+        # Auto-detect appropriate columns
+        detected_columns = []
+        detected_text_columns = []
+        
+        # Exclude certain column types
+        exclude_types = ['datetime', 'bool', 'binary']
+        
+        try:
+            # Try to use DataTypeDetector for more advanced detection
+            from freamon.utils.datatype_detector import DataTypeDetector
+            
+            # Create detector and detect types
+            detector = DataTypeDetector(pandas_df)
+            type_results = detector.detect_all_types()
+            
+            # Process detected types
+            for col, info in type_results.items():
+                logical_type = info.get('logical_type', '')
+                
+                # Skip excluded types
+                if logical_type in exclude_types:
+                    continue
+                    
+                # Skip primary key-like columns (high cardinality, unique identifiers)
+                if logical_type == 'id' or (logical_type == 'categorical' and 
+                                          pandas_df[col].nunique() > 0.95 * len(pandas_df)):
+                    continue
+                
+                # Identify potential text fields vs. normal columns
+                if logical_type == 'string':
+                    # Sample the column to check text length
+                    sample = pandas_df[col].dropna().sample(min(100, len(pandas_df[col].dropna())), 
+                                                          random_state=42)
+                    
+                    # Calculate average string length of non-empty strings
+                    non_empty = [s for s in sample if isinstance(s, str) and len(s) > 0]
+                    if non_empty:
+                        avg_length = sum(len(s) for s in non_empty) / len(non_empty)
+                        
+                        # Classify based on length
+                        if avg_length >= min_text_length:
+                            detected_text_columns.append(col)
+                        else:
+                            detected_columns.append(col)
+                else:
+                    # Add other types (numeric, categorical) to regular columns
+                    detected_columns.append(col)
+                    
+        except (ImportError, Exception) as e:
+            print(f"Warning: Could not use DataTypeDetector: {str(e)}. Using simple detection.")
+            
+            # Fallback to simple detection
+            for col in pandas_df.columns:
+                # Skip columns with majority missing values
+                if pandas_df[col].isna().mean() > 0.7:
+                    continue
+                
+                # Analyze column type
+                if pd.api.types.is_numeric_dtype(pandas_df[col].dtype):
+                    detected_columns.append(col)
+                elif pd.api.types.is_string_dtype(pandas_df[col].dtype) or pandas_df[col].dtype == 'object':
+                    # Check if it's a text field
+                    sample = pandas_df[col].dropna().sample(min(100, len(pandas_df[col].dropna())), 
+                                                          random_state=42)
+                    
+                    # Calculate average string length for strings
+                    string_vals = [s for s in sample if isinstance(s, str)]
+                    if string_vals:
+                        avg_length = sum(len(s) for s in string_vals) / len(string_vals)
+                        
+                        # Classify based on length
+                        if avg_length >= min_text_length:
+                            detected_text_columns.append(col)
+                        else:
+                            detected_columns.append(col)
+        
+        # Use detected columns
+        if detected_columns or detected_text_columns:
+            columns = detected_columns + detected_text_columns
+            
+            # Set text_columns if auto-detected
+            if detected_text_columns:
+                text_columns = detected_text_columns
+                
+            print(f"Auto-detected {len(detected_columns)} regular columns and {len(detected_text_columns)} text columns for similarity comparison")
+        else:
+            # If no columns detected, use all columns except datetime and bool
+            columns = [col for col in pandas_df.columns 
+                      if not pd.api.types.is_datetime64_dtype(pandas_df[col].dtype) 
+                      and not pd.api.types.is_bool_dtype(pandas_df[col].dtype)]
+            print(f"Using {len(columns)} columns for similarity comparison")
+            
+    # Set text threshold to main threshold if not specified
+    if text_threshold is None:
+        text_threshold = threshold
+    
+    # Generate weights if not provided
+    if weights is None and columns:
+        weights = {}
+        
+        # Use equal weights as a base
+        equal_weight = 1.0 / len(columns)
+        
+        for col in columns:
+            if text_columns and col in text_columns:
+                # Apply text weight boost for text columns
+                weights[col] = equal_weight * text_weight_boost
+            else:
+                weights[col] = equal_weight
+                
+        # Normalize weights to sum to 1.0
+        weight_sum = sum(weights.values())
+        if weight_sum > 0:
+            weights = {col: w / weight_sum for col, w in weights.items()}
+    
     # Apply auto parameter selection if requested
     if auto_mode:
         if not AUTO_PARAMS_AVAILABLE:
@@ -1621,7 +1774,10 @@ def flag_similar_records(
                 'rows_per_band': rows_per_band,
                 'memory_limit_gb': memory_limit_gb,
                 'show_progress': show_progress,
-                'jupyter_mode': jupyter_mode
+                'jupyter_mode': jupyter_mode,
+                'text_columns': text_columns,
+                'text_method': text_method,
+                'text_threshold': text_threshold
             }
             
             # Apply auto parameter selection
@@ -1727,6 +1883,9 @@ def flag_similar_records(
             similarity_column=similarity_column,
             max_comparisons=max_comparisons,
             use_polars=use_polars,
+            text_columns=text_columns,
+            text_method=text_method,
+            text_threshold=text_threshold,
             blocking_columns=blocking_columns,
             blocking_method=blocking_method,
             blocking_rules=blocking_rules,
@@ -1757,6 +1916,10 @@ def flag_similar_records(
             use_polars=use_polars,
             show_progress=use_progress_tracking,
             jupyter_mode=jupyter_mode,
+            text_columns=text_columns,
+            text_method=text_method,
+            text_threshold=text_threshold,
+            max_comparisons=max_comparisons,
         )
 
 
@@ -1772,6 +1935,9 @@ def _flag_similar_records_standard(
     similarity_column: Optional[str] = None,
     max_comparisons: Optional[int] = None,
     use_polars: bool = False,
+    text_columns: Optional[List[str]] = None,
+    text_method: str = 'fuzzy',
+    text_threshold: Optional[float] = None,
     blocking_columns: Optional[List[str]] = None,
     blocking_method: str = 'exact',
     blocking_rules: Optional[Dict[str, Callable]] = None,
@@ -1861,6 +2027,10 @@ def _flag_similar_records_standard(
             chunk_size=2000,  # Reasonable default chunk size
             n_jobs=1,
             use_polars=use_polars,
+            text_columns=text_columns,
+            text_method=text_method,
+            text_threshold=text_threshold,
+            max_comparisons=max_comparisons,
         )
         
     # Use a sparse graph representation to save memory
@@ -2007,8 +2177,13 @@ def _flag_similar_records_standard(
         row1 = col_subset.iloc[i]
         row2 = col_subset.iloc[j]
         
-        # Calculate similarity
-        similarity = _calculate_similarity(row1, row2, columns, weights, method)
+        # Calculate similarity with text handling
+        similarity = _calculate_similarity(
+            row1, row2, columns, weights, method,
+            text_columns=text_columns, 
+            text_method=text_method,
+            text_threshold=text_threshold
+        )
         
         # Add edge if similarity is above threshold
         if similarity >= threshold:
@@ -2123,6 +2298,9 @@ def _flag_similar_records_chunked(
     n_jobs: int = 1,
     use_polars: bool = False,
     max_comparisons: Optional[int] = None,
+    text_columns: Optional[List[str]] = None,
+    text_method: str = 'fuzzy',
+    text_threshold: Optional[float] = None,
     show_progress: bool = False,
     jupyter_mode: Optional[bool] = None,
 ) -> Any:
@@ -2195,115 +2373,13 @@ def _flag_similar_records_chunked(
     for i in range(n_rows):
         G.add_node(i)
     
-    # Define a function to process a pair of chunks
-    def process_chunk_pair(chunk1_idx, chunk2_idx):
-        start1 = chunk1_idx * chunk_size
-        end1 = min((chunk1_idx + 1) * chunk_size, n_rows)
-        
-        start2 = chunk2_idx * chunk_size
-        end2 = min((chunk2_idx + 1) * chunk_size, n_rows)
-        
-        # Get just the columns we need
-        cols_subset = pandas_df[columns]
-        
-        chunk1 = cols_subset.iloc[start1:end1]
-        
-        # Initialize local results
-        edges = []
-        scores = {}
-        
-        # For within-chunk comparison
-        if chunk1_idx == chunk2_idx:
-            # Calculate max pairs for sampling
-            total_chunk_pairs = (len(chunk1) * (len(chunk1) - 1)) // 2
-            
-            # If max_comparisons is set, limit the pairs to compare within this chunk
-            chunk_max_pairs = None
-            if max_comparisons is not None:
-                # Proportionally allocate max_comparisons to this chunk
-                chunk_size_proportion = (end1 - start1) / n_rows
-                chunk_max_pairs = int(max_comparisons * chunk_size_proportion * chunk_size_proportion * n_chunks)
-                
-                # Make sure we have at least some pairs to compare
-                chunk_max_pairs = max(100, chunk_max_pairs)
-                chunk_max_pairs = min(chunk_max_pairs, total_chunk_pairs)
-            
-            # Generate pairs to compare - potentially with sampling
-            if chunk_max_pairs is not None and chunk_max_pairs < total_chunk_pairs:
-                import random
-                pairs = []
-                for i in range(len(chunk1)):
-                    for j in range(i+1, len(chunk1)):
-                        pairs.append((i, j))
-                random.shuffle(pairs)
-                chunk_pairs = pairs[:chunk_max_pairs]
-            else:
-                chunk_pairs = [(i, j) for i in range(len(chunk1)) for j in range(i+1, len(chunk1))]
-            
-            # Compare selected pairs
-            for i, j in chunk_pairs:
-                abs_i = start1 + i
-                abs_j = start1 + j
-                
-                row1 = chunk1.iloc[i]
-                row2 = chunk1.iloc[j]
-                
-                # Calculate similarity
-                similarity = _calculate_similarity(row1, row2, columns, weights, method)
-                
-                # Add edge if similarity is above threshold
-                if similarity >= threshold:
-                    edges.append((abs_i, abs_j))
-                    scores[(abs_i, abs_j)] = similarity
-        else:
-            # For between-chunk comparison
-            chunk2 = cols_subset.iloc[start2:end2]
-            
-            # Calculate max pairs for sampling
-            total_between_pairs = len(chunk1) * len(chunk2)
-            
-            # If max_comparisons is set, limit the pairs to compare between chunks
-            between_max_pairs = None
-            if max_comparisons is not None:
-                # Proportionally allocate max_comparisons to this chunk pair
-                chunk1_prop = (end1 - start1) / n_rows
-                chunk2_prop = (end2 - start2) / n_rows
-                between_max_pairs = int(max_comparisons * chunk1_prop * chunk2_prop * n_chunks * (n_chunks+1) / 2)
-                
-                # Make sure we have at least some pairs to compare
-                between_max_pairs = max(100, between_max_pairs)
-                between_max_pairs = min(between_max_pairs, total_between_pairs)
-            
-            # Generate pairs to compare - potentially with sampling
-            if between_max_pairs is not None and between_max_pairs < total_between_pairs:
-                import random
-                # Sample pairs to compare - more efficient for large chunks
-                chunk_pairs = []
-                for _ in range(between_max_pairs):
-                    i = random.randint(0, len(chunk1) - 1)
-                    j = random.randint(0, len(chunk2) - 1)
-                    chunk_pairs.append((i, j))
-            else:
-                chunk_pairs = [(i, j) for i in range(len(chunk1)) for j in range(len(chunk2))]
-            
-            # Compare selected pairs
-            for i, j in chunk_pairs:
-                abs_i = start1 + i
-                abs_j = start2 + j
-                
-                row1 = chunk1.iloc[i]
-                row2 = chunk2.iloc[j]
-                
-                # Calculate similarity
-                similarity = _calculate_similarity(row1, row2, columns, weights, method)
-                
-                # Add edge if similarity is above threshold
-                if similarity >= threshold:
-                    edges.append((abs_i, abs_j))
-                    scores[(abs_i, abs_j)] = similarity
-        
-        # Return results for this chunk pair
-        return edges, scores
+    # Create a wrapper for local (non-parallel) use
+    def _process_chunk_pair(chunk1_idx, chunk2_idx):
+        return _process_chunk_pair_for_parallel((
+            chunk1_idx, chunk2_idx, chunk_size, n_rows, n_chunks, 
+            max_comparisons, threshold, columns, weights, method,
+            text_columns, text_method, text_threshold, pandas_df[columns]
+        ))
     
     # Calculate total number of chunk pairs
     total_chunk_pairs = (n_chunks * (n_chunks + 1)) // 2
@@ -2390,7 +2466,12 @@ def _flag_similar_records_chunked(
                 row2 = chunk1.iloc[j]
                 
                 # Calculate similarity
-                similarity = _calculate_similarity(row1, row2, columns, weights, method)
+                similarity = _calculate_similarity(
+                    row1, row2, columns, weights, method,
+                    text_columns=text_columns,
+                    text_method=text_method,
+                    text_threshold=text_threshold
+                )
                 
                 # Add edge if similarity is above threshold
                 if similarity >= threshold:
@@ -2436,7 +2517,12 @@ def _flag_similar_records_chunked(
                 row2 = chunk2.iloc[j]
                 
                 # Calculate similarity
-                similarity = _calculate_similarity(row1, row2, columns, weights, method)
+                similarity = _calculate_similarity(
+                    row1, row2, columns, weights, method,
+                    text_columns=text_columns,
+                    text_method=text_method,
+                    text_threshold=text_threshold
+                )
                 
                 # Add edge if similarity is above threshold
                 if similarity >= threshold:
@@ -2454,14 +2540,13 @@ def _flag_similar_records_chunked(
         all_scores = {}
         
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-            # Submit all jobs using the global function instead of the nested one
+            # Submit all jobs with all necessary parameters
             future_to_pair = {
                 executor.submit(
-                    _global_process_chunk_pair, 
-                    i, j, 
-                    chunk_size, n_rows, 
-                    pandas_df, columns, 
-                    weights, method, threshold
+                    _process_chunk_pair_for_parallel, 
+                    (i, j, chunk_size, n_rows, n_chunks, 
+                     max_comparisons, threshold, columns, weights, method,
+                     text_columns, text_method, text_threshold, pandas_df[columns])
                 ): (i, j) for i, j in chunk_pairs
             }
             
@@ -2501,7 +2586,7 @@ def _flag_similar_records_chunked(
         all_scores = {}
         
         for idx, (i, j) in enumerate(chunk_pairs):
-            edges, scores = process_chunk_pair(i, j)
+            edges, scores = _process_chunk_pair(i, j)
             
             # Only keep edges with similarity above threshold
             if edges:
@@ -2817,7 +2902,12 @@ def _flag_similar_records_polars(
             row2 = pandas_df.iloc[idx2]
             
             # Calculate similarity
-            similarity = _calculate_similarity(row1, row2, columns, weights, method)
+            similarity = _calculate_similarity(
+                row1, row2, columns, weights, method,
+                text_columns=text_columns,
+                text_method=text_method,
+                text_threshold=text_threshold
+            )
             similarities.append(similarity)
         
         # Add edges for similar pairs
@@ -2886,12 +2976,166 @@ def _flag_similar_records_polars(
         return polars_df
 
 
-def _calculate_similarity(row1, row2, columns, weights, method):
+# Define a function to process a pair of chunks for parallel processing
+# This needs to be at module level to avoid pickling issues with multiprocessing
+def _process_chunk_pair_for_parallel(args):
+    chunk1_idx, chunk2_idx, chunk_size, n_rows, n_chunks, max_comparisons, threshold, columns, weights, method, text_columns, text_method, text_threshold, df_columns = args
+    
+    import pandas as pd
+    import random
+    
+    start1 = chunk1_idx * chunk_size
+    end1 = min((chunk1_idx + 1) * chunk_size, n_rows)
+    
+    start2 = chunk2_idx * chunk_size
+    end2 = min((chunk2_idx + 1) * chunk_size, n_rows)
+    
+    # Initialize local results
+    edges = []
+    scores = {}
+    
+    # For within-chunk comparison
+    if chunk1_idx == chunk2_idx:
+        # Get the chunk
+        chunk1 = df_columns.iloc[start1:end1]
+        
+        # Calculate max pairs for sampling
+        total_chunk_pairs = (len(chunk1) * (len(chunk1) - 1)) // 2
+        
+        # If max_comparisons is set, limit the pairs to compare within this chunk
+        chunk_max_pairs = None
+        if max_comparisons is not None:
+            # Proportionally allocate max_comparisons to this chunk
+            chunk_size_proportion = (end1 - start1) / n_rows
+            chunk_max_pairs = int(max_comparisons * chunk_size_proportion * chunk_size_proportion * n_chunks)
+            
+            # Make sure we have at least some pairs to compare
+            chunk_max_pairs = max(100, chunk_max_pairs)
+            chunk_max_pairs = min(chunk_max_pairs, total_chunk_pairs)
+        
+        # Generate pairs to compare - potentially with sampling
+        if chunk_max_pairs is not None and chunk_max_pairs < total_chunk_pairs:
+            pairs = []
+            for i in range(len(chunk1)):
+                for j in range(i+1, len(chunk1)):
+                    pairs.append((i, j))
+            random.shuffle(pairs)
+            chunk_pairs = pairs[:chunk_max_pairs]
+        else:
+            chunk_pairs = [(i, j) for i in range(len(chunk1)) for j in range(i+1, len(chunk1))]
+        
+        # Compare selected pairs
+        for i, j in chunk_pairs:
+            abs_i = start1 + i
+            abs_j = start1 + j
+            
+            row1 = chunk1.iloc[i]
+            row2 = chunk1.iloc[j]
+            
+            # Calculate similarity using our _calculate_similarity function
+            # Import here to avoid circular reference
+            from freamon.deduplication.flag_duplicates import _calculate_similarity
+            
+            similarity = _calculate_similarity(
+                row1, row2, columns, weights, method, 
+                text_columns=text_columns, 
+                text_method=text_method, 
+                text_threshold=text_threshold
+            )
+            
+            # Add edge if similarity is above threshold
+            if similarity >= threshold:
+                edges.append((abs_i, abs_j))
+                scores[(abs_i, abs_j)] = similarity
+    else:
+        # For between-chunk comparison
+        chunk1 = df_columns.iloc[start1:end1]
+        chunk2 = df_columns.iloc[start2:end2]
+        
+        # Calculate max pairs for sampling
+        total_between_pairs = len(chunk1) * len(chunk2)
+        
+        # If max_comparisons is set, limit the pairs to compare between chunks
+        between_max_pairs = None
+        if max_comparisons is not None:
+            # Proportionally allocate max_comparisons to this chunk pair
+            chunk1_prop = (end1 - start1) / n_rows
+            chunk2_prop = (end2 - start2) / n_rows
+            between_max_pairs = int(max_comparisons * chunk1_prop * chunk2_prop * n_chunks * (n_chunks+1) / 2)
+            
+            # Make sure we have at least some pairs to compare
+            between_max_pairs = max(100, between_max_pairs)
+            between_max_pairs = min(between_max_pairs, total_between_pairs)
+        
+        # Generate pairs to compare - potentially with sampling
+        if between_max_pairs is not None and between_max_pairs < total_between_pairs:
+            # Sample pairs to compare - more efficient for large chunks
+            chunk_pairs = []
+            for _ in range(between_max_pairs):
+                i = random.randint(0, len(chunk1) - 1)
+                j = random.randint(0, len(chunk2) - 1)
+                chunk_pairs.append((i, j))
+        else:
+            chunk_pairs = [(i, j) for i in range(len(chunk1)) for j in range(len(chunk2))]
+        
+        # Compare selected pairs
+        for i, j in chunk_pairs:
+            abs_i = start1 + i
+            abs_j = start2 + j
+            
+            row1 = chunk1.iloc[i]
+            row2 = chunk2.iloc[j]
+            
+            # Calculate similarity using the calculate_similarity function
+            # Import here to avoid circular reference
+            from freamon.deduplication.flag_duplicates import _calculate_similarity
+            
+            similarity = _calculate_similarity(
+                row1, row2, columns, weights, method, 
+                text_columns=text_columns, 
+                text_method=text_method, 
+                text_threshold=text_threshold
+            )
+            
+            # Add edge if similarity is above threshold
+            if similarity >= threshold:
+                edges.append((abs_i, abs_j))
+                scores[(abs_i, abs_j)] = similarity
+    
+    # Return results for this chunk pair
+    return edges, scores
+
+
+def _calculate_similarity(row1, row2, columns, weights, method, 
+                      text_columns=None, text_method='fuzzy', text_threshold=0.8):
     """
     Helper function to calculate similarity between two rows.
     
     Used by both standard and chunked implementations.
+    
+    Parameters
+    ----------
+    row1 : pd.Series
+        First row to compare
+    row2 : pd.Series
+        Second row to compare
+    columns : List[str]
+        Columns to consider for similarity
+    weights : Dict[str, float]
+        Dictionary mapping column names to weights
+    method : str
+        Similarity calculation method ('composite', 'exact_subset', or 'fuzzy_subset')
+    text_columns : Optional[List[str]]
+        Columns to process as text with specialized methods
+    text_method : str
+        Method to use for text similarity calculation
+    text_threshold : float
+        Threshold for text similarity
     """
+    # Initialize text columns if not provided
+    if text_columns is None:
+        text_columns = []
+    
     if method == 'composite':
         # Calculate weighted similarity across all columns
         total_sim = 0.0
@@ -2903,8 +3147,91 @@ def _calculate_similarity(row1, row2, columns, weights, method):
             if pd.isna(val1) or pd.isna(val2):
                 continue
             
-            # Calculate column similarity based on type
-            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+            # Calculate column similarity based on type and text classification
+            if col in text_columns and isinstance(val1, str) and isinstance(val2, str):
+                # Use specialized text similarity methods
+                if text_method == 'fuzzy':
+                    # Levenshtein for moderate-length text
+                    from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                    col_sim = calculate_levenshtein_similarity(val1, val2)
+                
+                elif text_method == 'tfidf':
+                    # TF-IDF cosine similarity for longer text
+                    try:
+                        from sklearn.feature_extraction.text import TfidfVectorizer
+                        from sklearn.metrics.pairwise import cosine_similarity
+                        
+                        # Create a small corpus with just these two texts
+                        corpus = [val1, val2]
+                        
+                        # Vectorize
+                        vectorizer = TfidfVectorizer(
+                            stop_words='english', 
+                            min_df=1,
+                            lowercase=True,
+                            strip_accents='unicode'
+                        )
+                        
+                        # Calculate similarity
+                        tfidf_matrix = vectorizer.fit_transform(corpus)
+                        col_sim = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+                    except ImportError:
+                        # Fall back to fuzzy if sklearn not available
+                        from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                        col_sim = calculate_levenshtein_similarity(val1, val2)
+                
+                elif text_method == 'ngram':
+                    # N-gram Jaccard similarity
+                    try:
+                        # Create character n-grams
+                        def get_ngrams(text, n=3):
+                            return set(' ' + text.lower() + ' ') | set(
+                                text.lower()[i:i+n] for i in range(len(text) - n + 1) if len(text) >= n
+                            )
+                        
+                        # Get n-grams for both texts
+                        ngrams1 = get_ngrams(val1, 3)
+                        ngrams2 = get_ngrams(val2, 3)
+                        
+                        # Calculate Jaccard similarity
+                        if not ngrams1 or not ngrams2:
+                            col_sim = 0.0
+                        else:
+                            col_sim = len(ngrams1.intersection(ngrams2)) / len(ngrams1.union(ngrams2))
+                    except:
+                        # Fall back to fuzzy
+                        from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                        col_sim = calculate_levenshtein_similarity(val1, val2)
+                
+                elif text_method == 'lsh':
+                    # Use minhash for LSH-based similarity
+                    try:
+                        from datasketch import MinHash
+                        
+                        # Function to create shingles
+                        def get_shingles(text, k=3):
+                            return set(text.lower()[i:i+k] for i in range(len(text) - k + 1) if len(text) >= k)
+                        
+                        # Create MinHash objects
+                        m1, m2 = MinHash(), MinHash()
+                        for s in get_shingles(val1):
+                            m1.update(s.encode('utf-8'))
+                        for s in get_shingles(val2):
+                            m2.update(s.encode('utf-8'))
+                        
+                        # Calculate Jaccard similarity estimate
+                        col_sim = m1.jaccard(m2)
+                    except ImportError:
+                        # Fall back to fuzzy
+                        from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                        col_sim = calculate_levenshtein_similarity(val1, val2)
+                
+                else:
+                    # Default to Levenshtein
+                    from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                    col_sim = calculate_levenshtein_similarity(val1, val2)
+            
+            elif isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
                 # Numerical similarity
                 max_val = max(abs(val1), abs(val2))
                 if max_val == 0:
@@ -2913,7 +3240,7 @@ def _calculate_similarity(row1, row2, columns, weights, method):
                     col_sim = 1.0 - min(1.0, abs(val1 - val2) / max_val)
             
             elif isinstance(val1, str) and isinstance(val2, str):
-                # Text similarity
+                # Regular text/string similarity
                 from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
                 col_sim = calculate_levenshtein_similarity(val1, val2)
             
@@ -2954,27 +3281,109 @@ def _calculate_similarity(row1, row2, columns, weights, method):
             if pd.isna(val1) or pd.isna(val2):
                 continue
             
-            # Calculate column similarity based on type
-            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+            # Calculate column similarity based on type and text classification
+            if col in text_columns and isinstance(val1, str) and isinstance(val2, str):
+                # Use specialized text similarity methods with appropriate threshold
+                if text_method == 'fuzzy':
+                    # Levenshtein for moderate-length text
+                    from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                    col_sim = calculate_levenshtein_similarity(val1, val2)
+                    # Use text-specific threshold
+                    if col_sim >= text_threshold:
+                        matching_weight += weights.get(col, 0.0)
+                
+                elif text_method == 'tfidf':
+                    # TF-IDF cosine similarity for longer text
+                    try:
+                        from sklearn.feature_extraction.text import TfidfVectorizer
+                        from sklearn.metrics.pairwise import cosine_similarity
+                        
+                        # Create a small corpus with just these two texts
+                        corpus = [val1, val2]
+                        
+                        # Vectorize
+                        vectorizer = TfidfVectorizer(
+                            stop_words='english', 
+                            min_df=1,
+                            lowercase=True,
+                            strip_accents='unicode'
+                        )
+                        
+                        # Calculate similarity
+                        tfidf_matrix = vectorizer.fit_transform(corpus)
+                        col_sim = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+                        
+                        # Use text-specific threshold
+                        if col_sim >= text_threshold:
+                            matching_weight += weights.get(col, 0.0)
+                    except ImportError:
+                        # Fall back to fuzzy if sklearn not available
+                        from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                        col_sim = calculate_levenshtein_similarity(val1, val2)
+                        if col_sim >= text_threshold:
+                            matching_weight += weights.get(col, 0.0)
+                
+                elif text_method in ['ngram', 'lsh']:
+                    # These methods use Jaccard similarity
+                    try:
+                        # Create character n-grams
+                        def get_ngrams(text, n=3):
+                            return set(' ' + text.lower() + ' ') | set(
+                                text.lower()[i:i+n] for i in range(len(text) - n + 1) if len(text) >= n
+                            )
+                        
+                        # Get n-grams for both texts
+                        ngrams1 = get_ngrams(val1, 3)
+                        ngrams2 = get_ngrams(val2, 3)
+                        
+                        # Calculate Jaccard similarity
+                        if not ngrams1 or not ngrams2:
+                            col_sim = 0.0
+                        else:
+                            col_sim = len(ngrams1.intersection(ngrams2)) / len(ngrams1.union(ngrams2))
+                        
+                        # Use text-specific threshold
+                        if col_sim >= text_threshold:
+                            matching_weight += weights.get(col, 0.0)
+                    except:
+                        # Fall back to fuzzy
+                        from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                        col_sim = calculate_levenshtein_similarity(val1, val2)
+                        if col_sim >= text_threshold:
+                            matching_weight += weights.get(col, 0.0)
+                
+                else:
+                    # Default to Levenshtein
+                    from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                    col_sim = calculate_levenshtein_similarity(val1, val2)
+                    if col_sim >= text_threshold:
+                        matching_weight += weights.get(col, 0.0)
+            
+            elif isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
                 # Numerical similarity
                 max_val = max(abs(val1), abs(val2))
                 if max_val == 0:
                     col_sim = 1.0 if val1 == val2 else 0.0
                 else:
                     col_sim = 1.0 - min(1.0, abs(val1 - val2) / max_val)
+                
+                # Consider as matching if similarity is high enough
+                if col_sim >= 0.9:  # High threshold for numerical columns
+                    matching_weight += weights.get(col, 0.0)
             
             elif isinstance(val1, str) and isinstance(val2, str):
-                # Text similarity
+                # Regular text/string similarity
                 from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
                 col_sim = calculate_levenshtein_similarity(val1, val2)
+                
+                # Consider as matching if similarity is high enough
+                if col_sim >= 0.9:  # High threshold for short string columns
+                    matching_weight += weights.get(col, 0.0)
             
             else:
                 # Other types - exact match only
-                col_sim = 1.0 if val1 == val2 else 0.0
-            
-            # Consider as matching if similarity is high enough
-            if col_sim >= 0.9:  # High threshold for individual columns
-                matching_weight += weights.get(col, 0.0)
+                if val1 == val2:
+                    matching_weight += weights.get(col, 0.0)
         
         return matching_weight
     
