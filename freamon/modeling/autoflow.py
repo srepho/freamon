@@ -919,8 +919,16 @@ class AutoModelFlow:
                 # Get max_docs from the options
                 max_docs = topic_options.get('max_sample_size', 10000)
                 
+                # Define the supported parameters for create_topic_model_optimized
+                supported_text_options = {
+                    'df', 'text_column', 'n_topics', 'method', 'preprocessing_options',
+                    'auto_topics_range', 'auto_topics_method', 'max_docs', 'deduplication_options',
+                    'return_full_data', 'return_original_mapping', 'use_multiprocessing',
+                    'anonymize', 'anonymization_config', 'supervised_column'
+                }
+                
                 # Create minimal parameters dictionary with only the supported parameters
-                # Filter out any unsupported parameters like sampling_ratio
+                # Explicitly filter out any unsupported parameters 
                 filtered_options = {
                     'df': df,
                     'text_column': col,
@@ -931,6 +939,16 @@ class AutoModelFlow:
                     'auto_topics_method': topic_options.get('auto_topics_method', 'coherence'),
                     'max_docs': max_docs  # Max sample size
                 }
+                
+                # Add any other supported options from topic_options that are in supported_text_options
+                for key, value in topic_options.items():
+                    if key in supported_text_options and key not in filtered_options:
+                        filtered_options[key] = value
+                
+                # Log any parameters that are being filtered out for debugging purposes
+                for key in topic_options.keys():
+                    if key not in supported_text_options:
+                        logger.debug(f"Filtering out unsupported parameter for topic modeling: {key}")
                 
                 topic_result = create_topic_model_optimized(**filtered_options)
             except ValueError as e:
@@ -1567,7 +1585,7 @@ class AutoModelFlow:
             cv_metrics[metric] = []
             
         # Perform cross-validation with the tuned model
-        for train_idx, test_idx in cv:
+        for train_idx, test_idx in cv.split(X, y):
             X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
             y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
             
