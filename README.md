@@ -27,9 +27,74 @@ Freamon is a comprehensive Python toolkit for exploratory data analysis, feature
 
 ## Installation
 
+### Basic Installation
+
+For basic functionality (EDA, visualization, core deduplication):
+
 ```bash
 pip install freamon
 ```
+
+### Installation with All Features
+
+For full functionality including advanced modeling, text processing, and performance optimizations:
+
+```bash
+pip install "freamon[all]"
+```
+
+### Feature-Specific Installation
+
+For specific feature sets:
+
+```bash
+# For high-performance with Polars acceleration
+pip install "freamon[performance]"
+
+# For text analysis and topic modeling
+pip install "freamon[topic_modeling]"
+
+# For word embeddings support
+pip install "freamon[word_embeddings]"
+
+# For extended features (modeling, Polars, LightGBM, SHAP, etc.)
+pip install "freamon[extended]"
+
+# For Markdown report generation
+pip install "freamon[markdown_reports]"
+```
+
+### Dependencies by Feature
+
+Here's what each optional dependency provides:
+
+- **Core** (always installed):
+  - `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `networkx`
+
+- **Performance** [`freamon[performance]`]:
+  - `pyarrow` - For faster data processing
+
+- **Extended** [`freamon[extended]`]:
+  - `polars` - High-performance DataFrame library (2-5x faster than pandas)
+  - `lightgbm` - Gradient boosting framework
+  - `optuna` - Hyperparameter optimization
+  - `shap` - Model explanation
+  - `spacy` - NLP processing
+  - `statsmodels` - Statistical modeling
+  - `dask` - Parallel computing
+
+- **Topic Modeling** [`freamon[topic_modeling]`]:
+  - `gensim` - Topic modeling
+  - `pyldavis` - Topic visualization
+  - `wordcloud` - Word cloud generation
+
+- **Word Embeddings** [`freamon[word_embeddings]`]:
+  - `gensim` - Word vectors
+  - `nltk` - Natural language toolkit
+  - `spacy` - Linguistic features
+
+- **Markdown Reports** [`freamon[markdown_reports]`]:
+  - `markdown` - Report generation
 
 ## Quick Start
 
@@ -61,6 +126,9 @@ import numpy as np
 from freamon.eda import EDAAnalyzer
 from freamon.utils.datatype_detector import detect_datatypes
 from freamon import auto_model
+
+# Required for PowerPoint/Excel reports
+# pip install "freamon[extended]"
 from freamon.eda.export import export_to_powerpoint, export_to_excel
 
 # 1. Load sample data
@@ -109,6 +177,8 @@ export_to_powerpoint(
 print("\nEDA results exported to PowerPoint")
 
 # 7. Run automated modeling with data type detection
+# Note: Install required dependencies for advanced modeling:
+# pip install "freamon[extended,topic_modeling]"
 results = auto_model(
     df=df,
     target_column='churn',
@@ -168,6 +238,10 @@ from examples.deduplication_tracking_example import IndexTracker
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
+
+# For network visualization (optional)
+# pip install networkx
+import networkx as nx
 
 # 1. Load sample data with text and duplicates
 df = pd.read_csv('data_with_duplicates.csv')
@@ -276,7 +350,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# Required for duplicate flagging functionality 
+# pip install "freamon[extended]"
 from freamon.deduplication.flag_duplicates import flag_similar_records, flag_text_duplicates
+
+# Required for PowerPoint/Excel export
+# pip install "freamon[extended]"
 from freamon.eda.export import export_to_excel, export_to_powerpoint
 
 # 1. Load unlabeled dataset
