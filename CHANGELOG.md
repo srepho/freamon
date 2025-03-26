@@ -1,5 +1,10 @@
 # Changelog
 
+## Version 0.3.42
+* Fixed bug in deduplication module:
+  * Fixed `flag_similar_records` function to handle empty weights dictionary
+  * Prevented division by zero error when normalizing weights
+
 ## Version 0.3.41
 * Improved memory efficiency in deduplication module:
   * Added missing parameters to `flag_similar_records` function for better backward compatibility
