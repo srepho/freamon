@@ -1,5 +1,15 @@
 # Changelog
 
+## Version 0.3.43
+* Added blocking and LSH functionality to `flag_similar_records`:
+  * Implemented blocking for faster deduplication based on exact column matches
+  * Added Locality-Sensitive Hashing (LSH) for approximate matching with high performance
+  * Implemented phonetic and n-gram based blocking strategies
+  * Added combined blocking and LSH approach for very large datasets
+  * Created dedicated modules for blocking and LSH implementations
+  * Added comprehensive example demonstrating performance improvements
+  * Added optional dependencies for LSH (datasketch) and phonetic matching (jellyfish)
+
 ## Version 0.3.42
 * Fixed bug in deduplication module:
   * Fixed `flag_similar_records` function to handle empty weights dictionary

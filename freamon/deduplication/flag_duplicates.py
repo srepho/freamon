@@ -9,12 +9,17 @@ rather than removing them, useful for:
 4. Tracking duplicates for reporting and analysis
 """
 
-from typing import Dict, List, Tuple, Union, Optional, Any, Set
+from typing import Dict, List, Tuple, Union, Optional, Any, Set, Callable
 import pandas as pd
 import numpy as np
 import networkx as nx
 
 from freamon.utils.dataframe_utils import check_dataframe_type, convert_dataframe
+import logging
+
+# Optional imports - will be imported dynamically as needed
+# from freamon.deduplication.blocking import apply_blocking_strategy
+# from freamon.deduplication.lsh import apply_lsh_strategy
 from freamon.deduplication.exact_deduplication import hash_deduplication
 from freamon.deduplication.fuzzy_deduplication import find_similar_texts
 from freamon.deduplication.lsh_deduplication import lsh_deduplication
@@ -1354,6 +1359,22 @@ def flag_similar_records(
     chunk_size: Optional[int] = None,
     n_jobs: int = 1,
     use_polars: bool = False,
+    
+    # New parameters for blocking
+    blocking_columns: Optional[List[str]] = None,
+    blocking_method: str = 'exact',
+    blocking_rules: Optional[Dict[str, Callable]] = None,
+    max_block_size: Optional[int] = None,
+    
+    # New parameters for LSH
+    use_lsh: bool = False,
+    lsh_method: str = 'auto',
+    lsh_threshold: Optional[float] = None,
+    num_perm: int = 128,
+    num_bands: Optional[int] = None,
+    rows_per_band: Optional[int] = None,
+    
+    # Legacy parameters
     add_similarity_score: bool = False,
     add_group_id: bool = False,
     group_id_column: Optional[str] = None,
@@ -1397,6 +1418,37 @@ def flag_similar_records(
         Only used when chunk_size is specified.
     use_polars : bool, default=False
         Whether to use polars for faster processing. Requires polars to be installed.
+    blocking_columns : Optional[List[str]], default=None
+        Columns to use for blocking. Records in different blocks won't be compared.
+        Significantly speeds up processing for large datasets.
+    blocking_method : str, default='exact'
+        Method to use for blocking:
+        - 'exact': Exact match on blocking columns
+        - 'phonetic': Phonetic matching on blocking columns
+        - 'ngram': N-gram based blocking
+        - 'rule': Custom blocking rules
+    blocking_rules : Optional[Dict[str, Callable]], default=None
+        Dictionary mapping rule names to functions that generate blocking keys.
+        Required when blocking_method='rule'.
+    max_block_size : Optional[int], default=None
+        Maximum number of records in a block before sampling or splitting.
+    use_lsh : bool, default=False
+        Whether to use Locality Sensitive Hashing for faster similarity search.
+        Greatly speeds up processing for large datasets with a small accuracy tradeoff.
+    lsh_method : str, default='auto'
+        LSH method to use:
+        - 'auto': Automatically select based on column types
+        - 'minhash': Use MinHash LSH for text data
+        - 'random_projection': Use Random Projection LSH for numerical data
+        - 'hybrid': Use combination of methods for mixed data types
+    lsh_threshold : Optional[float], default=None
+        LSH similarity threshold. If None, uses threshold * 0.9 as a pre-filter.
+    num_perm : int, default=128
+        Number of permutations for MinHash LSH.
+    num_bands : Optional[int], default=None
+        Number of bands for LSH. If None, calculated automatically from threshold.
+    rows_per_band : Optional[int], default=None
+        Number of rows per band for LSH. If None, calculated automatically from threshold.
     add_similarity_score : bool, default=False
         Legacy parameter, use similarity_column instead.
         If True, add a column with similarity scores.
@@ -1423,7 +1475,9 @@ def flag_similar_records(
     ...     'name': ['John Smith', 'Jane Doe', 'Jon Smith', 'Mary Jones', 'John Smith'],
     ...     'email': ['john@example.com', 'jane@example.com', 'jon@example.com', 
     ...               'mary@example.com', 'johnsmith@example.com'],
-    ...     'phone': ['555-1234', '555-5678', '555-9012', '555-3456', '555-1234']
+    ...     'phone': ['555-1234', '555-5678', '555-9012', '555-3456', '555-1234'],
+    ...     'state': ['CA', 'NY', 'CA', 'TX', 'CA'],
+    ...     'zipcode': ['90210', '10001', '90210', '75001', '90210']
     ... })
     >>> # Weight name and email higher than phone
     >>> weights = {'name': 0.4, 'email': 0.4, 'phone': 0.2}
@@ -1439,6 +1493,22 @@ def flag_similar_records(
     >>> very_large_df = pd.concat([df] * 10000)  # Create a 50k row dataset
     >>> result = flag_similar_records(very_large_df, columns=['name', 'email', 'phone'], 
     ...                               weights=weights, chunk_size=500, max_comparisons=1000000)
+    
+    # Using blocking for more efficient processing
+    >>> result = flag_similar_records(df, columns=['name', 'email', 'phone'],
+    ...                              blocking_columns=['state', 'zipcode'],
+    ...                              threshold=0.8)
+    
+    # Using LSH for fast approximate matching
+    >>> result = flag_similar_records(df, columns=['name', 'email', 'phone'],
+    ...                              use_lsh=True, lsh_method='minhash',
+    ...                              threshold=0.8)
+    
+    # Combined approach for very large datasets
+    >>> result = flag_similar_records(very_large_df, columns=['name', 'email', 'phone'],
+    ...                              blocking_columns=['state'],
+    ...                              use_lsh=True, 
+    ...                              threshold=0.8)
     """
     # Handle legacy parameter names
     if duplicate_flag_column is not None and flag_column == 'is_similar':
@@ -1473,6 +1543,16 @@ def flag_similar_records(
             similarity_column=similarity_column,
             max_comparisons=max_comparisons,
             use_polars=use_polars,
+            blocking_columns=blocking_columns,
+            blocking_method=blocking_method,
+            blocking_rules=blocking_rules,
+            max_block_size=max_block_size,
+            use_lsh=use_lsh,
+            lsh_method=lsh_method,
+            lsh_threshold=lsh_threshold,
+            num_perm=num_perm,
+            num_bands=num_bands,
+            rows_per_band=rows_per_band,
         )
     else:
         # For larger datasets, use the chunked approach
@@ -1504,6 +1584,16 @@ def _flag_similar_records_standard(
     similarity_column: Optional[str] = None,
     max_comparisons: Optional[int] = None,
     use_polars: bool = False,
+    blocking_columns: Optional[List[str]] = None,
+    blocking_method: str = 'exact',
+    blocking_rules: Optional[Dict[str, Callable]] = None,
+    max_block_size: Optional[int] = None,
+    use_lsh: bool = False,
+    lsh_method: str = 'auto',
+    lsh_threshold: Optional[float] = None,
+    num_perm: int = 128,
+    num_bands: Optional[int] = None,
+    rows_per_band: Optional[int] = None,
 ) -> Any:
     """
     Standard implementation of similar records flagging (non-chunked).
@@ -1565,7 +1655,8 @@ def _flag_similar_records_standard(
     n_rows = len(pandas_df)
     
     # For large datasets, automatically switch to chunked processing
-    if n_rows > 20000 and max_comparisons is None:
+    # Skip auto-switching if we're using blocking or LSH, which are more efficient
+    if n_rows > 20000 and max_comparisons is None and not (blocking_columns or use_lsh):
         print(f"Auto-switching to chunked processing for large dataset ({n_rows} rows)")
         return _flag_similar_records_chunked(
             df=pandas_df,
@@ -1589,18 +1680,94 @@ def _flag_similar_records_standard(
     for i in range(n_rows):
         G.add_node(i)
     
-    # Calculate total and actual comparisons to be made
+    # Calculate total possible comparisons
     total_comparisons = (n_rows * (n_rows - 1)) // 2
-    comparisons_to_do = min(total_comparisons, max_comparisons or total_comparisons)
+    print(f"Total possible comparisons: {total_comparisons:,}")
     
-    # Print info about comparisons for large datasets
-    if n_rows > 5000:
-        percentage = (comparisons_to_do / total_comparisons) * 100
-        print(f"Making {comparisons_to_do:,} of {total_comparisons:,} possible comparisons ({percentage:.1f}%)")
+    # Apply optimization strategies for pair selection
+    comparison_pairs = None
+    
+    # Step 1: Apply blocking if specified
+    if blocking_columns or (blocking_method == 'rule' and blocking_rules):
+        try:
+            from freamon.deduplication.blocking import apply_blocking_strategy
+            
+            print(f"Applying {blocking_method} blocking with columns: {blocking_columns}")
+            
+            blocking_pairs = apply_blocking_strategy(
+                df=pandas_df,
+                strategy=blocking_method,
+                blocking_columns=blocking_columns,
+                blocking_rules=blocking_rules,
+                max_block_size=max_block_size,
+                max_comparisons=max_comparisons
+            )
+            
+            comparison_pairs = blocking_pairs
+            percentage = (len(comparison_pairs) / total_comparisons) * 100
+            print(f"Blocking created {len(comparison_pairs):,} pairs to compare ({percentage:.2f}% of all possible pairs)")
+        except ImportError as e:
+            print(f"Warning: Blocking module not available. Error: {e}")
+            print("Proceeding without blocking optimization.")
+    
+    # Step 2: Apply LSH if specified
+    if use_lsh:
+        try:
+            from freamon.deduplication.lsh import apply_lsh_strategy
+            
+            # Set LSH threshold if not specified
+            if lsh_threshold is None:
+                lsh_threshold = threshold * 0.9  # Slightly lower to catch more candidates
+            
+            print(f"Applying {lsh_method} LSH with threshold: {lsh_threshold}")
+            
+            lsh_pairs = apply_lsh_strategy(
+                df=pandas_df,
+                columns=columns,
+                weights=weights,
+                lsh_method=lsh_method,
+                threshold=lsh_threshold,
+                num_perm=num_perm,
+                num_bands=num_bands,
+                rows_per_band=rows_per_band
+            )
+            
+            # If we also have blocking pairs, take the intersection
+            if comparison_pairs is not None:
+                comparison_pairs_set = set(tuple(sorted(pair)) for pair in comparison_pairs)
+                lsh_pairs_set = set(lsh_pairs)  # Already sorted in LSH
+                combined_pairs = lsh_pairs_set.intersection(comparison_pairs_set)
+                comparison_pairs = list(combined_pairs)
+                percentage = (len(comparison_pairs) / total_comparisons) * 100
+                print(f"Combined blocking and LSH: {len(comparison_pairs):,} pairs to compare ({percentage:.2f}% of all possible pairs)")
+            else:
+                comparison_pairs = list(lsh_pairs)
+                percentage = (len(comparison_pairs) / total_comparisons) * 100
+                print(f"LSH identified {len(comparison_pairs):,} potential similar pairs ({percentage:.2f}% of all possible pairs)")
+        except ImportError as e:
+            print(f"Warning: LSH module not available. Error: {e}")
+            print("Proceeding without LSH optimization.")
+    
+    # Step 3: Apply max_comparisons limit if needed
+    comparisons_to_do = total_comparisons
+    if max_comparisons is not None:
+        comparisons_to_do = min(total_comparisons, max_comparisons)
         
-    # Create pairs to compare - use a generator for memory efficiency
+        if comparison_pairs is not None and len(comparison_pairs) > max_comparisons:
+            # Sample from optimized pairs
+            import random
+            random.shuffle(comparison_pairs)
+            comparison_pairs = comparison_pairs[:max_comparisons]
+            print(f"Limited to {max_comparisons:,} pairs due to max_comparisons setting")
+    
+    # Final fallback to default generator if no specialized pairs were created
     def generate_pairs():
-        if comparisons_to_do < total_comparisons:
+        # If we've already determined pairs through blocking or LSH, use those
+        if comparison_pairs is not None:
+            for pair in comparison_pairs:
+                yield pair
+        # Otherwise use random sampling or all pairs
+        elif comparisons_to_do < total_comparisons:
             # Randomly sample pairs for efficiency
             import random
             indices = list(range(n_rows))
@@ -1615,6 +1782,11 @@ def _flag_similar_records_standard(
             for i in range(n_rows):
                 for j in range(i + 1, n_rows):
                     yield i, j
+                    
+    # Print info about comparisons for large datasets
+    if comparison_pairs is None and n_rows > 5000:
+        percentage = (comparisons_to_do / total_comparisons) * 100
+        print(f"Making {comparisons_to_do:,} of {total_comparisons:,} possible comparisons ({percentage:.1f}%)")
     
     # Process pairs in batches to reduce memory pressure
     batch_size = min(10000, comparisons_to_do)
@@ -1775,7 +1947,18 @@ def _flag_similar_records_chunked(
             inplace=inplace,
             group_column=group_column,
             similarity_column=similarity_column,
+            max_comparisons=max_comparisons,
             use_polars=use_polars,
+            blocking_columns=blocking_columns,
+            blocking_method=blocking_method,
+            blocking_rules=blocking_rules,
+            max_block_size=max_block_size,
+            use_lsh=use_lsh,
+            lsh_method=lsh_method,
+            lsh_threshold=lsh_threshold,
+            num_perm=num_perm,
+            num_bands=num_bands,
+            rows_per_band=rows_per_band,
         )
     
     # For very large datasets, make the chunk size even smaller
@@ -2079,6 +2262,16 @@ def _flag_similar_records_polars(
     group_column: Optional[str] = None,
     similarity_column: Optional[str] = None,
     max_comparisons: Optional[int] = None,
+    blocking_columns: Optional[List[str]] = None,
+    blocking_method: str = 'exact',
+    blocking_rules: Optional[Dict[str, Callable]] = None,
+    max_block_size: Optional[int] = None,
+    use_lsh: bool = False,
+    lsh_method: str = 'auto',
+    lsh_threshold: Optional[float] = None,
+    num_perm: int = 128,
+    num_bands: Optional[int] = None,
+    rows_per_band: Optional[int] = None,
 ) -> Any:
     """
     Polars-optimized implementation of similar records flagging.
@@ -2142,22 +2335,104 @@ def _flag_similar_records_polars(
     for i in range(n_rows):
         G.add_node(i)
     
-    # Generate index pairs to compare
+    # Calculate total possible comparisons
     total_comparisons = (n_rows * (n_rows - 1)) // 2
-    comparisons_to_do = min(total_comparisons, max_comparisons or total_comparisons)
+    print(f"Total possible comparisons: {total_comparisons:,}")
     
-    if comparisons_to_do < total_comparisons:
+    # Apply optimization strategies for pair selection
+    comparison_pairs = None
+    
+    # Step 1: Apply blocking if specified
+    if blocking_columns or (blocking_method == 'rule' and blocking_rules):
+        try:
+            from freamon.deduplication.blocking import apply_blocking_strategy
+            
+            print(f"Applying {blocking_method} blocking with columns: {blocking_columns}")
+            
+            blocking_pairs = apply_blocking_strategy(
+                df=pandas_df,
+                strategy=blocking_method,
+                blocking_columns=blocking_columns,
+                blocking_rules=blocking_rules,
+                max_block_size=max_block_size,
+                max_comparisons=max_comparisons
+            )
+            
+            comparison_pairs = blocking_pairs
+            percentage = (len(comparison_pairs) / total_comparisons) * 100
+            print(f"Blocking created {len(comparison_pairs):,} pairs to compare ({percentage:.2f}% of all possible pairs)")
+        except ImportError as e:
+            print(f"Warning: Blocking module not available. Error: {e}")
+            print("Proceeding without blocking optimization.")
+    
+    # Step 2: Apply LSH if specified
+    if use_lsh:
+        try:
+            from freamon.deduplication.lsh import apply_lsh_strategy
+            
+            # Set LSH threshold if not specified
+            if lsh_threshold is None:
+                lsh_threshold = threshold * 0.9  # Slightly lower to catch more candidates
+            
+            print(f"Applying {lsh_method} LSH with threshold: {lsh_threshold}")
+            
+            lsh_pairs = apply_lsh_strategy(
+                df=pandas_df,
+                columns=columns,
+                weights=weights,
+                lsh_method=lsh_method,
+                threshold=lsh_threshold,
+                num_perm=num_perm,
+                num_bands=num_bands,
+                rows_per_band=rows_per_band
+            )
+            
+            # If we also have blocking pairs, take the intersection
+            if comparison_pairs is not None:
+                comparison_pairs_set = set(tuple(sorted(pair)) for pair in comparison_pairs)
+                lsh_pairs_set = set(lsh_pairs)  # Already sorted in LSH
+                combined_pairs = lsh_pairs_set.intersection(comparison_pairs_set)
+                comparison_pairs = list(combined_pairs)
+                percentage = (len(comparison_pairs) / total_comparisons) * 100
+                print(f"Combined blocking and LSH: {len(comparison_pairs):,} pairs to compare ({percentage:.2f}% of all possible pairs)")
+            else:
+                comparison_pairs = list(lsh_pairs)
+                percentage = (len(comparison_pairs) / total_comparisons) * 100
+                print(f"LSH identified {len(comparison_pairs):,} potential similar pairs ({percentage:.2f}% of all possible pairs)")
+        except ImportError as e:
+            print(f"Warning: LSH module not available. Error: {e}")
+            print("Proceeding without LSH optimization.")
+    
+    # Step 3: Apply max_comparisons limit if needed
+    comparisons_to_do = total_comparisons
+    if max_comparisons is not None:
+        comparisons_to_do = min(total_comparisons, max_comparisons)
+        
+        if comparison_pairs is not None and len(comparison_pairs) > max_comparisons:
+            # Sample from our optimized pairs
+            import random
+            random.shuffle(comparison_pairs)
+            comparison_pairs = comparison_pairs[:max_comparisons]
+            print(f"Limited to {max_comparisons:,} pairs due to max_comparisons setting")
+    
+    # Generate final pairs to compare
+    if comparison_pairs is not None:
+        # Use pre-filtered pairs
+        pairs = comparison_pairs
+    elif comparisons_to_do < total_comparisons:
         # Randomly sample pairs for efficiency
         import random
-        pairs = []
-        for i in range(n_rows):
-            for j in range(i+1, n_rows):
-                pairs.append((i, j))
-        random.shuffle(pairs)
-        pairs = pairs[:comparisons_to_do]
+        all_pairs = [(i, j) for i in range(n_rows) for j in range(i+1, n_rows)]
+        random.shuffle(all_pairs)
+        pairs = all_pairs[:comparisons_to_do]
     else:
         # Compare all pairs
         pairs = [(i, j) for i in range(n_rows) for j in range(i+1, n_rows)]
+        
+    # Print info about comparisons for large datasets
+    if n_rows > 5000:
+        percentage = (len(pairs) / total_comparisons) * 100
+        print(f"Processing {len(pairs):,} of {total_comparisons:,} possible comparisons ({percentage:.1f}%)")
     
     # Process in batches for better performance
     batch_size = 10000
