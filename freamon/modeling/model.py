@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
+import lightgbm
 
 from freamon.explainability.shap_explainer import ShapExplainer, ShapIQExplainer
 
@@ -42,6 +43,68 @@ class Model:
         self.params = params
         self.feature_names = feature_names
         self.is_fitted = False
+        
+    def get_params(self, deep=True):
+        """
+        Get parameters for this estimator.
+        
+        This method is required by scikit-learn for cloning estimators.
+        
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, return the parameters of all sub-objects that are estimators.
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Parameter names mapped to their values.
+        """
+        params = {
+            'model': self.model,
+            'model_type': self.model_type,
+            'params': self.params,
+            'feature_names': self.feature_names
+        }
+        
+        # If deep=True, also include parameters from the underlying model
+        if deep and hasattr(self.model, 'get_params'):
+            model_params = self.model.get_params(deep=deep)
+            # Prefix with 'model__' to avoid name conflicts
+            model_params = {f'model__{key}': val for key, val in model_params.items()}
+            params.update(model_params)
+            
+        return params
+        
+    def set_params(self, **params):
+        """
+        Set the parameters of this estimator.
+        
+        This method is required by scikit-learn for cloning estimators.
+        
+        Parameters
+        ----------
+        **params : Dict
+            Estimator parameters.
+            
+        Returns
+        -------
+        self : object
+            Estimator instance.
+        """
+        valid_params = self.get_params(deep=False)
+        
+        for key, value in params.items():
+            if key in valid_params:
+                setattr(self, key, value)
+            elif key.startswith('model__') and hasattr(self.model, 'set_params'):
+                # Handle nested parameters for the underlying model
+                model_key = key[7:]  # Remove 'model__' prefix
+                self.model.set_params(**{model_key: value})
+            else:
+                raise ValueError(f'Invalid parameter {key} for estimator {self.__class__.__name__}')
+                
+        return self
     
     def fit(
         self,
@@ -79,20 +142,38 @@ class Model:
             self.model.fit(X, y, **kwargs)
         
         elif self.model_type == 'lightgbm':
-            # For LightGBM, we need to handle eval_set differently
+            # For LightGBM, we need to handle eval_set and early_stopping_rounds differently
+            # LGBMClassifier.fit() doesn't accept early_stopping_rounds directly
+            early_stopping_rounds = kwargs.pop('early_stopping_rounds', None)
+            
+            # Handle eval_set
             if eval_set is not None:
                 # Check if eval_set is already a list of tuples
                 if isinstance(eval_set, list) and all(isinstance(x, tuple) for x in eval_set):
-                    self.model.fit(X, y, eval_set=eval_set, **kwargs)
+                    if early_stopping_rounds is not None:
+                        self.model.fit(X, y, eval_set=eval_set, callbacks=[
+                            lightgbm.early_stopping(stopping_rounds=early_stopping_rounds)
+                        ], **kwargs)
+                    else:
+                        self.model.fit(X, y, eval_set=eval_set, **kwargs)
                 else:
                     # Assume it's a single validation set tuple
                     X_val, y_val = eval_set
-                    self.model.fit(
-                        X, y,
-                        eval_set=[(X_val, y_val)],
-                        **kwargs
-                    )
+                    if early_stopping_rounds is not None:
+                        self.model.fit(
+                            X, y,
+                            eval_set=[(X_val, y_val)],
+                            callbacks=[lightgbm.early_stopping(stopping_rounds=early_stopping_rounds)],
+                            **kwargs
+                        )
+                    else:
+                        self.model.fit(
+                            X, y,
+                            eval_set=[(X_val, y_val)],
+                            **kwargs
+                        )
             else:
+                # Without eval_set, early stopping can't be used
                 self.model.fit(X, y, **kwargs)
         
         elif self.model_type == 'xgboost':
@@ -141,12 +222,24 @@ class Model:
         if isinstance(X, pd.DataFrame) and self.feature_names is not None:
             missing_features = set(self.feature_names) - set(X.columns)
             if missing_features:
-                raise ValueError(
-                    f"Input is missing features: {missing_features}"
-                )
+                # Instead of failing, add the missing features with zeros
+                import warnings
+                warnings.warn(f"Input is missing features during prediction: {missing_features}. "
+                             f"These will be filled with zeros.", UserWarning)
+                
+                # Create missing columns with zeros
+                for feature in missing_features:
+                    X[feature] = 0.0
             
-            # Reorder columns to match the order used during training
-            X = X[self.feature_names]
+            # Ensure all needed features exist and are in the right order
+            feature_df = pd.DataFrame(index=X.index)
+            for feature in self.feature_names:
+                if feature in X.columns:
+                    feature_df[feature] = X[feature]
+                else:
+                    feature_df[feature] = 0.0
+            
+            X = feature_df
         
         return self.model.predict(X)
     
@@ -172,22 +265,34 @@ class Model:
         if not self.is_fitted:
             raise ValueError("Model is not fitted. Call fit() first.")
         
+        # Check feature names if X is a dataframe and feature_names is set
+        if isinstance(X, pd.DataFrame) and self.feature_names is not None:
+            missing_features = set(self.feature_names) - set(X.columns)
+            if missing_features:
+                # Instead of failing, add the missing features with zeros
+                import warnings
+                warnings.warn(f"Input is missing features during prediction_proba: {missing_features}. "
+                             f"These will be filled with zeros.", UserWarning)
+                
+                # Create missing columns with zeros
+                for feature in missing_features:
+                    X[feature] = 0.0
+            
+            # Ensure all needed features exist and are in the right order
+            feature_df = pd.DataFrame(index=X.index)
+            for feature in self.feature_names:
+                if feature in X.columns:
+                    feature_df[feature] = X[feature]
+                else:
+                    feature_df[feature] = 0.0
+            
+            X = feature_df
+        
         # Check if the model supports predict_proba
         if not hasattr(self.model, 'predict_proba'):
             raise AttributeError(
                 f"Model of type {self.model_type} does not support predict_proba"
             )
-        
-        # Check feature names if X is a dataframe and feature_names is set
-        if isinstance(X, pd.DataFrame) and self.feature_names is not None:
-            missing_features = set(self.feature_names) - set(X.columns)
-            if missing_features:
-                raise ValueError(
-                    f"Input is missing features: {missing_features}"
-                )
-            
-            # Reorder columns to match the order used during training
-            X = X[self.feature_names]
         
         return self.model.predict_proba(X)
     

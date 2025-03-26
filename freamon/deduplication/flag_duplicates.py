@@ -1397,6 +1397,12 @@ def flag_similar_records(
     min_text_length: int = 20,
     text_weight_boost: float = 1.5,
     
+    # New parameters for date handling
+    date_columns: Optional[List[str]] = None,
+    date_threshold_days: int = 30,
+    date_similarity_method: str = 'linear',
+    auto_detect_dates: bool = True,
+    
     # New parameters for blocking
     blocking_columns: Optional[List[str]] = None,
     blocking_method: str = 'exact',
@@ -1491,6 +1497,20 @@ def flag_similar_records(
         requiring specialized text similarity methods.
     text_weight_boost : float, default=1.5
         Factor to boost weights for long text fields when auto-weighting is used.
+    date_columns : Optional[List[str]], default=None
+        Columns that contain date values to be compared using date-specific similarity methods.
+        These columns will be processed with date-aware similarity calculations.
+    date_threshold_days : int, default=30
+        Number of days within which dates are considered similar. This acts as the
+        maximum distance for full similarity in the linear method.
+    date_similarity_method : str, default='linear'
+        Method to use for calculating date similarity:
+        - 'linear': Linear decrease from 1.0 to 0.0 as days difference increases
+        - 'exponential': Exponential decay as days difference increases
+        - 'threshold': Binary 1.0 if within threshold, 0.0 otherwise
+    auto_detect_dates : bool, default=True
+        Whether to automatically detect and handle date columns with specialized
+        date similarity methods during calculation.
     blocking_columns : Optional[List[str]], default=None
         Columns to use for blocking. Records in different blocks won't be compared.
         Significantly speeds up processing for large datasets.
@@ -1681,6 +1701,7 @@ def flag_similar_records(
             print(f"Warning: Could not use DataTypeDetector: {str(e)}. Using simple detection.")
             
             # Fallback to simple detection
+            detected_date_columns = []
             for col in pandas_df.columns:
                 # Skip columns with majority missing values
                 if pandas_df[col].isna().mean() > 0.7:
@@ -1688,6 +1709,32 @@ def flag_similar_records(
                 
                 # Analyze column type
                 if pd.api.types.is_numeric_dtype(pandas_df[col].dtype):
+                    # Check for datetime-like numeric columns if auto_detect_dates is True
+                    if auto_detect_dates and date_columns is None:
+                        try:
+                            sample = pandas_df[col].dropna().sample(min(100, len(pandas_df[col].dropna())), 
+                                                                  random_state=42)
+                            
+                            # Check if it's already a datetime dtype
+                            if pd.api.types.is_datetime64_dtype(sample.dtype):
+                                detected_date_columns.append(col)
+                                continue
+                                
+                            # Check for Excel dates (numbers between 0 and 50000)
+                            if pd.api.types.is_numeric_dtype(sample.dtype):
+                                values = sample.astype(float)
+                                # Excel dates are typically numbers between 0 and 50000
+                                if values.min() >= 0 and values.max() <= 50000 and values.max() - values.min() > 30:
+                                    detected_date_columns.append(col)
+                                    continue
+                                # Check for Unix timestamps (large integer values)
+                                elif values.min() > 1000000000 and values.max() < 2000000000:
+                                    detected_date_columns.append(col)
+                                    continue
+                        except:
+                            pass
+                    
+                    # If not detected as date, add to regular columns
                     detected_columns.append(col)
                 elif pd.api.types.is_string_dtype(pandas_df[col].dtype) or pandas_df[col].dtype == 'object':
                     # Check if it's a text field
@@ -1699,7 +1746,29 @@ def flag_similar_records(
                     if string_vals:
                         avg_length = sum(len(s) for s in string_vals) / len(string_vals)
                         
-                        # Classify based on length
+                        # Check for potential date strings if auto_detect_dates is True
+                        if auto_detect_dates and date_columns is None:
+                            # Try to parse sample as dates
+                            try:
+                                date_sample = pd.Series(string_vals)
+                                parsed = pd.to_datetime(date_sample, errors='coerce')
+                                # If most values can be parsed as dates, consider it a date column
+                                if parsed.notna().mean() >= 0.7:
+                                    detected_date_columns.append(col)
+                                    continue
+                                
+                                # Check for month-year format
+                                try:
+                                    from freamon.utils.date_converters import is_month_year_format
+                                    if is_month_year_format(date_sample, threshold=0.7):
+                                        detected_date_columns.append(col)
+                                        continue
+                                except:
+                                    pass
+                            except:
+                                pass
+                                
+                        # Classify based on length (if not already classified as date)
                         if avg_length >= min_text_length:
                             detected_text_columns.append(col)
                         else:
@@ -1713,13 +1782,28 @@ def flag_similar_records(
             if detected_text_columns:
                 text_columns = detected_text_columns
                 
-            print(f"Auto-detected {len(detected_columns)} regular columns and {len(detected_text_columns)} text columns for similarity comparison")
+            # Set date_columns if any detected
+            if detected_date_columns and auto_detect_dates and date_columns is None:
+                date_columns = detected_date_columns
+            
+            print(f"Auto-detected {len(detected_columns)} regular columns, {len(detected_text_columns)} text columns, and {len(detected_date_columns)} date columns for similarity comparison")
         else:
             # If no columns detected, use all columns except datetime and bool
             columns = [col for col in pandas_df.columns 
                       if not pd.api.types.is_datetime64_dtype(pandas_df[col].dtype) 
                       and not pd.api.types.is_bool_dtype(pandas_df[col].dtype)]
-            print(f"Using {len(columns)} columns for similarity comparison")
+                      
+            # If auto_detect_dates is True, add datetime columns to date_columns
+            if auto_detect_dates and date_columns is None:
+                datetime_cols = [col for col in pandas_df.columns 
+                               if pd.api.types.is_datetime64_dtype(pandas_df[col].dtype)]
+                if datetime_cols:
+                    date_columns = datetime_cols
+                    print(f"Using {len(columns)} columns for similarity comparison and {len(datetime_cols)} date columns for specialized date comparison")
+                else:
+                    print(f"Using {len(columns)} columns for similarity comparison")
+            else:
+                print(f"Using {len(columns)} columns for similarity comparison")
             
     # Set text threshold to main threshold if not specified
     if text_threshold is None:
@@ -1777,7 +1861,10 @@ def flag_similar_records(
                 'jupyter_mode': jupyter_mode,
                 'text_columns': text_columns,
                 'text_method': text_method,
-                'text_threshold': text_threshold
+                'text_threshold': text_threshold,
+                'date_columns': date_columns,
+                'date_threshold_days': date_threshold_days,
+                'date_similarity_method': date_similarity_method
             }
             
             # Apply auto parameter selection
@@ -1877,15 +1964,18 @@ def flag_similar_records(
             weights=weights,
             threshold=threshold,
             method=method,
+            text_columns=text_columns,
+            text_method=text_method,
+            text_threshold=text_threshold,
+            date_columns=date_columns,
+            date_threshold_days=date_threshold_days,
+            date_similarity_method=date_similarity_method,
             flag_column=flag_column,
             inplace=inplace,
             group_column=group_column,
             similarity_column=similarity_column,
             max_comparisons=max_comparisons,
             use_polars=use_polars,
-            text_columns=text_columns,
-            text_method=text_method,
-            text_threshold=text_threshold,
             blocking_columns=blocking_columns,
             blocking_method=blocking_method,
             blocking_rules=blocking_rules,
@@ -1907,6 +1997,12 @@ def flag_similar_records(
             weights=weights,
             threshold=threshold,
             method=method,
+            text_columns=text_columns,
+            text_method=text_method,
+            text_threshold=text_threshold,
+            date_columns=date_columns,
+            date_threshold_days=date_threshold_days,
+            date_similarity_method=date_similarity_method,
             flag_column=flag_column,
             inplace=inplace,
             group_column=group_column,
@@ -1916,9 +2012,6 @@ def flag_similar_records(
             use_polars=use_polars,
             show_progress=use_progress_tracking,
             jupyter_mode=jupyter_mode,
-            text_columns=text_columns,
-            text_method=text_method,
-            text_threshold=text_threshold,
             max_comparisons=max_comparisons,
         )
 
@@ -1938,6 +2031,9 @@ def _flag_similar_records_standard(
     text_columns: Optional[List[str]] = None,
     text_method: str = 'fuzzy',
     text_threshold: Optional[float] = None,
+    date_columns: Optional[List[str]] = None,
+    date_threshold_days: int = 30,
+    date_similarity_method: str = 'linear',
     blocking_columns: Optional[List[str]] = None,
     blocking_method: str = 'exact',
     blocking_rules: Optional[Dict[str, Callable]] = None,
@@ -2020,6 +2116,12 @@ def _flag_similar_records_standard(
             weights=weights,
             threshold=threshold,
             method=method,
+            text_columns=text_columns,
+            text_method=text_method,
+            text_threshold=text_threshold,
+            date_columns=date_columns,
+            date_threshold_days=date_threshold_days,
+            date_similarity_method=date_similarity_method,
             flag_column=flag_column,
             inplace=inplace,
             group_column=group_column,
@@ -2027,9 +2129,6 @@ def _flag_similar_records_standard(
             chunk_size=2000,  # Reasonable default chunk size
             n_jobs=1,
             use_polars=use_polars,
-            text_columns=text_columns,
-            text_method=text_method,
-            text_threshold=text_threshold,
             max_comparisons=max_comparisons,
         )
         
@@ -2182,7 +2281,10 @@ def _flag_similar_records_standard(
             row1, row2, columns, weights, method,
             text_columns=text_columns, 
             text_method=text_method,
-            text_threshold=text_threshold
+            text_threshold=text_threshold,
+            date_columns=date_columns,
+            date_threshold_days=date_threshold_days,
+            date_similarity_method=date_similarity_method
         )
         
         # Add edge if similarity is above threshold
@@ -2290,6 +2392,12 @@ def _flag_similar_records_chunked(
     weights: Optional[Dict[str, float]] = None,
     threshold: float = 0.8,
     method: str = 'composite',
+    text_columns: Optional[List[str]] = None,
+    text_method: str = 'fuzzy',
+    text_threshold: float = 0.8,
+    date_columns: Optional[List[str]] = None,
+    date_threshold_days: int = 30,
+    date_similarity_method: str = 'linear',
     flag_column: str = 'is_similar',
     inplace: bool = False,
     group_column: Optional[str] = None,
@@ -2298,9 +2406,6 @@ def _flag_similar_records_chunked(
     n_jobs: int = 1,
     use_polars: bool = False,
     max_comparisons: Optional[int] = None,
-    text_columns: Optional[List[str]] = None,
-    text_method: str = 'fuzzy',
-    text_threshold: Optional[float] = None,
     show_progress: bool = False,
     jupyter_mode: Optional[bool] = None,
 ) -> Any:
@@ -2906,7 +3011,10 @@ def _flag_similar_records_polars(
                 row1, row2, columns, weights, method,
                 text_columns=text_columns,
                 text_method=text_method,
-                text_threshold=text_threshold
+                text_threshold=text_threshold,
+                date_columns=date_columns,
+                date_threshold_days=date_threshold_days,
+                date_similarity_method=date_similarity_method
             )
             similarities.append(similarity)
         
@@ -3107,7 +3215,8 @@ def _process_chunk_pair_for_parallel(args):
 
 
 def _calculate_similarity(row1, row2, columns, weights, method, 
-                      text_columns=None, text_method='fuzzy', text_threshold=0.8):
+                      text_columns=None, text_method='fuzzy', text_threshold=0.8,
+                      date_columns=None, date_threshold_days=30, date_similarity_method='linear'):
     """
     Helper function to calculate similarity between two rows.
     
@@ -3131,10 +3240,19 @@ def _calculate_similarity(row1, row2, columns, weights, method,
         Method to use for text similarity calculation
     text_threshold : float
         Threshold for text similarity
+    date_columns : Optional[List[str]]
+        Columns containing date values to compare with date-specific methods
+    date_threshold_days : int
+        Number of days within which dates are considered similar (max distance for full similarity)
+    date_similarity_method : str
+        Method to calculate date similarity: 'linear', 'exponential', or 'threshold'
     """
-    # Initialize text columns if not provided
+    # Initialize columns if not provided
     if text_columns is None:
         text_columns = []
+        
+    if date_columns is None:
+        date_columns = []
     
     if method == 'composite':
         # Calculate weighted similarity across all columns
@@ -3147,8 +3265,39 @@ def _calculate_similarity(row1, row2, columns, weights, method,
             if pd.isna(val1) or pd.isna(val2):
                 continue
             
-            # Calculate column similarity based on type and text classification
-            if col in text_columns and isinstance(val1, str) and isinstance(val2, str):
+            # Calculate column similarity based on type and column classification
+            if col in date_columns:
+                # Handle date columns with special date similarity logic
+                try:
+                    # Try to convert to pandas datetime if not already
+                    if not pd.api.types.is_datetime64_any_dtype(val1):
+                        val1 = pd.to_datetime(val1)
+                    if not pd.api.types.is_datetime64_any_dtype(val2):
+                        val2 = pd.to_datetime(val2)
+                    
+                    # Calculate the difference in days
+                    days_diff = abs((val1 - val2).total_seconds() / (60 * 60 * 24))
+                    
+                    # Calculate similarity based on the chosen method
+                    if date_similarity_method == 'threshold':
+                        # Simple threshold: 1.0 if within threshold, 0.0 otherwise
+                        col_sim = 1.0 if days_diff <= date_threshold_days else 0.0
+                        
+                    elif date_similarity_method == 'exponential':
+                        # Exponential decay: e^(-days_diff/scale)
+                        # This gives 1.0 at 0 days and approaches 0.0 as days_diff increases
+                        scale = date_threshold_days / 3  # Scale factor to control decay rate
+                        col_sim = np.exp(-days_diff / scale)
+                        
+                    else:  # Default to 'linear'
+                        # Linear decrease from 1.0 to 0.0 over the threshold range
+                        col_sim = max(0.0, 1.0 - (days_diff / date_threshold_days))
+                        
+                except Exception as e:
+                    # If date conversion fails, fall back to exact matching
+                    col_sim = 1.0 if val1 == val2 else 0.0
+                    
+            elif col in text_columns and isinstance(val1, str) and isinstance(val2, str):
                 # Use specialized text similarity methods
                 if text_method == 'fuzzy':
                     # Levenshtein for moderate-length text
@@ -3264,9 +3413,29 @@ def _calculate_similarity(row1, row2, columns, weights, method,
             if pd.isna(val1) or pd.isna(val2):
                 continue
             
-            # Check exact match
-            if val1 == val2:
-                matching_weight += weights.get(col, 0.0)
+            # Special handling for date columns
+            if col in date_columns:
+                try:
+                    # Try to convert to pandas datetime if not already
+                    if not pd.api.types.is_datetime64_any_dtype(val1):
+                        val1 = pd.to_datetime(val1)
+                    if not pd.api.types.is_datetime64_any_dtype(val2):
+                        val2 = pd.to_datetime(val2)
+                    
+                    # Calculate the difference in days
+                    days_diff = abs((val1 - val2).total_seconds() / (60 * 60 * 24))
+                    
+                    # Consider dates within the threshold as "exactly" matching
+                    if days_diff <= date_threshold_days:
+                        matching_weight += weights.get(col, 0.0)
+                except Exception:
+                    # If date conversion fails, fall back to exact matching
+                    if val1 == val2:
+                        matching_weight += weights.get(col, 0.0)
+            else:
+                # For non-date columns, check exact match
+                if val1 == val2:
+                    matching_weight += weights.get(col, 0.0)
         
         return matching_weight
         
@@ -3281,8 +3450,44 @@ def _calculate_similarity(row1, row2, columns, weights, method,
             if pd.isna(val1) or pd.isna(val2):
                 continue
             
-            # Calculate column similarity based on type and text classification
-            if col in text_columns and isinstance(val1, str) and isinstance(val2, str):
+            # Calculate column similarity based on type and column classification
+            if col in date_columns:
+                # Handle date columns with special date similarity logic
+                try:
+                    # Try to convert to pandas datetime if not already
+                    if not pd.api.types.is_datetime64_any_dtype(val1):
+                        val1 = pd.to_datetime(val1)
+                    if not pd.api.types.is_datetime64_any_dtype(val2):
+                        val2 = pd.to_datetime(val2)
+                    
+                    # Calculate the difference in days
+                    days_diff = abs((val1 - val2).total_seconds() / (60 * 60 * 24))
+                    
+                    # Calculate similarity based on the chosen method
+                    if date_similarity_method == 'threshold':
+                        # Simple threshold: 1.0 if within threshold, 0.0 otherwise
+                        col_sim = 1.0 if days_diff <= date_threshold_days else 0.0
+                        
+                    elif date_similarity_method == 'exponential':
+                        # Exponential decay: e^(-days_diff/scale)
+                        # This gives 1.0 at 0 days and approaches 0.0 as days_diff increases
+                        scale = date_threshold_days / 3  # Scale factor to control decay rate
+                        col_sim = np.exp(-days_diff / scale)
+                        
+                    else:  # Default to 'linear'
+                        # Linear decrease from 1.0 to 0.0 over the threshold range
+                        col_sim = max(0.0, 1.0 - (days_diff / date_threshold_days))
+                    
+                    # Add to matching weight if similarity is high enough
+                    if col_sim >= 0.7:  # A bit lower threshold for dates
+                        matching_weight += weights.get(col, 0.0)
+                        
+                except Exception as e:
+                    # If date conversion fails, fall back to exact matching
+                    if val1 == val2:
+                        matching_weight += weights.get(col, 0.0)
+            
+            elif col in text_columns and isinstance(val1, str) and isinstance(val2, str):
                 # Use specialized text similarity methods with appropriate threshold
                 if text_method == 'fuzzy':
                     # Levenshtein for moderate-length text

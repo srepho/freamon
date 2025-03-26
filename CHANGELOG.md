@@ -1,5 +1,38 @@
 # Changelog
 
+## Version 0.3.56
+* Added date similarity support to flag_similar_records function:
+  * Implemented three date similarity calculation methods: linear, exponential, and threshold-based
+  * Added auto-detection of date columns using sophisticated heuristics
+  * Added handling for multiple date formats including native datetime, string representations, and timestamps
+  * Added configurable thresholds for date similarity calculations
+  * Created comprehensive tests for date auto-detection and similarity features
+  * Fixed duplicated parameter definitions in flag_duplicates.py
+
+## Version 0.3.55
+* Fixed AutoModelFlow cross-validation errors with similarity features:
+  * Modified Model.predict and Model.predict_proba to handle missing features by adding zeros
+  * Enhanced cross-validation to handle feature mismatches during training/prediction
+  * Added robust error handling around prediction and metrics calculation
+  * Improved handling of dynamic features like those from deduplication processes
+  * Added graceful fallback for metrics calculation failures
+
+## Version 0.3.54
+* Fixed additional issues with Model class compatibility:
+  * Fixed error in calculate_metrics() call with incorrect parameter order
+  * Added robust handling of metrics not explicitly requested but returned by calculate_metrics
+  * Added safety checks to prevent KeyError on log_loss metric
+  * Improved cross-validation metrics handling for different problem types
+  * Enhanced error recovery in model evaluation
+
+## Version 0.3.53
+* Fixed Model class compatibility with scikit-learn:
+  * Added get_params and set_params methods to comply with scikit-learn estimator interface
+  * Fixed TypeError in sklearn.base.clone when using cross-validation
+  * Added proper parameter handling for nested model objects
+  * Fixed integration between custom Model class and scikit-learn's cross-validation
+  * Improved error handling for parameter validation
+
 ## Version 0.3.52
 * Fixed critical bugs in AutoModelFlow functionality:
   * Enhanced topic model parameter filtering to explicitly define supported parameters
