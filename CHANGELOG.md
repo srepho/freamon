@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 0.3.48
+* Fixed critical bugs in auto_model functionality:
+  * Fixed parameter handling in LightGBM classifier to prevent "unexpected keyword argument 'early_stopping_rounds'" error
+  * Fixed handling of 'sampling_ratio' parameter in topic modeling to prevent "unexpected keyword argument" error
+  * Added robust error handling and recovery for topic modeling in autoflow
+  * Improved parameter validation and filtering throughout model creation pipeline
+  * Enhanced error recovery for text processing with better fallback mechanisms
+  * Fixed index alignment issues in document-topic distributions
+
 ## Version 0.3.47
 * Fixed critical bugs in deduplication module:
   * Fixed handling of categorical columns in evaluation to prevent "Categorical does not support reduction 'sum'" error

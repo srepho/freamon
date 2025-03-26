@@ -7,8 +7,8 @@ from freamon.modeling.model import Model
 
 
 def create_model(
-    model_type: Literal['sklearn', 'lightgbm', 'xgboost', 'catboost'],
-    model_name: str,
+    model_type: str,
+    model_name: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
     random_state: Optional[int] = None,
     **kwargs
@@ -18,16 +18,25 @@ def create_model(
     
     Parameters
     ----------
-    model_type : Literal['sklearn', 'lightgbm', 'xgboost', 'catboost']
-        The type of model to create.
-    model_name : str
+    model_type : str
+        The type of model to create. Can be one of:
+        - Direct library types: 'sklearn', 'lightgbm', 'xgboost', 'catboost'
+        - Shorthand model types: 'lgbm_classifier', 'lgbm_regressor', 'xgb_classifier', 'xgb_regressor'
+        
+        Using shorthand model types is recommended as they automatically select the correct model class
+        without needing to specify model_name.
+    model_name : str, optional
         The name of the model within the specified library.
+        Not needed when using shorthand model types like 'lgbm_classifier'.
     params : Optional[Dict[str, Any]], default=None
         Parameters to pass to the model constructor.
     random_state : Optional[int], default=None
         Random state to use for reproducibility.
     **kwargs
         Additional keyword arguments to pass to the model constructor.
+        
+        Note: Internal parameters (cv, metrics, etc.) are automatically filtered out
+        and will not be passed to the underlying model constructor.
     
     Returns
     -------
@@ -39,8 +48,14 @@ def create_model(
     >>> # Create a scikit-learn RandomForestClassifier
     >>> model = create_model('sklearn', 'RandomForestClassifier', {'n_estimators': 100}, random_state=42)
     >>> 
-    >>> # Create a LightGBM classifier
+    >>> # Create a LightGBM classifier using library type and model name
     >>> model = create_model('lightgbm', 'LGBMClassifier', {'num_leaves': 31}, random_state=42)
+    >>>
+    >>> # Recommended: Use shorthand model type for LightGBM classifier (no model_name needed)
+    >>> model = create_model('lgbm_classifier', params={'num_leaves': 31}, random_state=42)
+    >>>
+    >>> # Recommended: Use shorthand model type for LightGBM regressor
+    >>> model = create_model('lgbm_regressor', params={'num_leaves': 31}, random_state=42)
     """
     # Combine params and kwargs
     if params is None:
@@ -51,15 +66,44 @@ def create_model(
     if random_state is not None:
         all_params['random_state'] = random_state
     
+    # Filter out internal parameters not meant for the model constructor
+    model_params = all_params.copy()
+    # These parameters are used internally but shouldn't be passed to model constructors
+    internal_params = [
+        'cv', 'early_stopping_rounds', 'metrics', 'callbacks',
+        'params', 'model_name', 'model_type', 'feature_names',
+        'problem_type', 'categorical_features'
+    ]
+    for param in internal_params:
+        if param in model_params:
+            model_params.pop(param)
+    
     # Create the model based on model_type
     if model_type == 'sklearn':
-        return _create_sklearn_model(model_name, all_params)
+        if model_name is None:
+            raise ValueError("model_name is required for sklearn models")
+        return _create_sklearn_model(model_name, model_params)
     elif model_type == 'lightgbm':
-        return _create_lightgbm_model(model_name, all_params)
+        if model_name is None:
+            raise ValueError("model_name is required for lightgbm models")
+        return _create_lightgbm_model(model_name, model_params)
     elif model_type == 'xgboost':
-        return _create_xgboost_model(model_name, all_params)
+        if model_name is None:
+            raise ValueError("model_name is required for xgboost models")
+        return _create_xgboost_model(model_name, model_params)
     elif model_type == 'catboost':
-        return _create_catboost_model(model_name, all_params)
+        if model_name is None:
+            raise ValueError("model_name is required for catboost models")
+        return _create_catboost_model(model_name, model_params)
+    # Handle shorthand model types
+    elif model_type == 'lgbm_classifier':
+        return _create_lightgbm_model('LGBMClassifier', model_params)
+    elif model_type == 'lgbm_regressor':
+        return _create_lightgbm_model('LGBMRegressor', model_params)
+    elif model_type == 'xgb_classifier':
+        return _create_xgboost_model('XGBClassifier', model_params)
+    elif model_type == 'xgb_regressor':
+        return _create_xgboost_model('XGBRegressor', model_params)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 

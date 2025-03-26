@@ -28,6 +28,7 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation, NMF
 import multiprocessing
 from sklearn.metrics.pairwise import cosine_similarity
+import scipy.sparse as sp
 
 # Try to import spaCy and language models
 try:
@@ -399,8 +400,33 @@ class TextProcessor:
                 stop_words='english'
             )
         
-        # Vectorize texts
-        dtm = vectorizer.fit_transform(texts)
+        # Vectorize texts with error handling
+        try:
+            dtm = vectorizer.fit_transform(texts)
+        except ValueError as e:
+            if "After pruning, no terms remain" in str(e):
+                # Fall back to min_df=1 and max_df=1.0 to ensure something is returned
+                print("Warning: Falling back to min_df=1 for text vectorization due to sparse data")
+                if method == 'nmf':
+                    vectorizer = TfidfVectorizer(
+                        max_features=max_features, 
+                        max_df=1.0,  # Accept all terms regardless of document frequency
+                        min_df=1,    # Accept even terms that appear only once
+                        ngram_range=(1, 1),  # Simplify to unigrams only
+                        stop_words='english'
+                    )
+                else:  # lda
+                    vectorizer = CountVectorizer(
+                        max_features=max_features, 
+                        max_df=1.0, 
+                        min_df=1,
+                        ngram_range=(1, 1),
+                        stop_words='english'
+                    )
+                dtm = vectorizer.fit_transform(texts)
+            else:
+                # Re-raise if it's some other error
+                raise
         
         # Create topic model
         if method == 'lda':
@@ -654,6 +680,418 @@ class TextProcessor:
             return 0
         
         return (positive_count - negative_count) / total
+        
+    def create_class_tfidf_model(self, df, text_column, class_column, ngram_range=(1, 2), 
+                               max_features=10000, min_df=5, max_df=0.9, top_n_per_class=10,
+                               preprocess=True, preprocessing_options=None):
+        """
+        Create a class-based TF-IDF (cTF-IDF) model for supervised topic modeling.
+        
+        cTF-IDF is a variant of TF-IDF optimized for documents with known classes or categories,
+        where the goal is to identify the most representative terms for each class.
+        
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            DataFrame containing text data and class labels
+        text_column : str
+            Name of the column containing text
+        class_column : str
+            Name of the column containing class/category labels
+        ngram_range : tuple, default=(1, 2)
+            Range of n-grams to include
+        max_features : int, default=10000
+            Maximum number of features to include
+        min_df : int, default=5
+            Minimum document frequency for terms
+        max_df : float, default=0.9
+            Maximum document frequency for terms
+        top_n_per_class : int, default=10
+            Number of top terms to extract per class
+        preprocess : bool, default=True
+            Whether to preprocess texts before creating the model
+        preprocessing_options : dict, default=None
+            Options for text preprocessing if preprocess=True:
+            - 'remove_stopwords': bool
+            - 'remove_punctuation': bool
+            - 'lemmatize': bool
+            - 'min_token_length': int
+            - 'custom_stopwords': list
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing:
+            - 'vectorizer': TfidfVectorizer used to create the model
+            - 'class_tfidf_matrix': Matrix of class-term TF-IDF scores
+            - 'feature_names': List of feature names (terms)
+            - 'class_labels': List of class labels
+            - 'top_terms_per_class': Dictionary mapping class labels to top terms
+            - 'class_sizes': Number of documents per class
+        
+        Examples:
+        ---------
+        >>> import pandas as pd
+        >>> from freamon.utils.text_utils import TextProcessor
+        >>> 
+        >>> # Sample data with text and categories
+        >>> data = pd.DataFrame({
+        >>>     'text': ['Document about sports', 'Another sports text', 
+        >>>              'Financial news article', 'Banking information'],
+        >>>     'category': ['Sports', 'Sports', 'Finance', 'Finance']
+        >>> })
+        >>> 
+        >>> # Create text processor and cTF-IDF model
+        >>> processor = TextProcessor()
+        >>> model = processor.create_class_tfidf_model(
+        >>>     df=data,
+        >>>     text_column='text',
+        >>>     class_column='category'
+        >>> )
+        >>> 
+        >>> # Print top terms for each class
+        >>> for class_label, terms in model['top_terms_per_class'].items():
+        >>>     print(f"{class_label}: {', '.join([term[0] for term in terms])}")
+        """
+        # Set default preprocessing options
+        default_preproc = {
+            'remove_stopwords': True,
+            'remove_punctuation': True,
+            'lemmatize': True,
+            'min_token_length': 3,
+            'custom_stopwords': []
+        }
+        
+        if preprocessing_options is None:
+            preprocessing_options = default_preproc
+        else:
+            preprocessing_options = {**default_preproc, **preprocessing_options}
+        
+        # Group texts by class
+        class_texts = {}
+        class_sizes = {}
+        
+        for class_label in df[class_column].unique():
+            # Get texts for this class
+            class_df = df[df[class_column] == class_label]
+            texts = class_df[text_column].fillna("").tolist()
+            class_sizes[class_label] = len(texts)
+            
+            # Preprocess if requested
+            if preprocess:
+                processed_texts = [
+                    self.preprocess_text(
+                        text,
+                        remove_stopwords=preprocessing_options['remove_stopwords'],
+                        remove_punctuation=preprocessing_options['remove_punctuation'],
+                        lemmatize=preprocessing_options['lemmatize'],
+                        min_token_length=preprocessing_options['min_token_length'],
+                        custom_stopwords=preprocessing_options['custom_stopwords']
+                    ) for text in texts
+                ]
+                class_texts[class_label] = " ".join(processed_texts)
+            else:
+                class_texts[class_label] = " ".join(texts)
+        
+        # Create TF-IDF vectorizer
+        vectorizer = TfidfVectorizer(
+            max_features=max_features,
+            min_df=min_df,
+            max_df=max_df,
+            ngram_range=ngram_range,
+            stop_words='english'
+        )
+        
+        # Transform the class documents
+        class_docs = [class_texts[label] for label in class_texts.keys()]
+        tfidf_matrix = vectorizer.fit_transform(class_docs)
+        
+        # Get feature names
+        feature_names = vectorizer.get_feature_names_out()
+        
+        # Create class-based TF-IDF normalization
+        # Get the document frequency vector
+        class_counts = np.array([class_sizes[label] for label in class_texts.keys()])
+        avg_class_count = np.mean(class_counts)
+        
+        # Normalize the TF-IDF matrix by class size
+        class_tfidf = sp.diags(avg_class_count / class_counts).dot(tfidf_matrix)
+        
+        # Extract top terms for each class
+        top_terms_per_class = {}
+        for i, class_label in enumerate(class_texts.keys()):
+            class_vector = class_tfidf[i].toarray().flatten()
+            top_indices = class_vector.argsort()[-top_n_per_class:][::-1]
+            top_terms = [(feature_names[idx], class_vector[idx]) for idx in top_indices]
+            top_terms_per_class[class_label] = top_terms
+        
+        # Create result dictionary
+        result = {
+            'vectorizer': vectorizer,
+            'class_tfidf_matrix': class_tfidf,
+            'feature_names': feature_names,
+            'class_labels': list(class_texts.keys()),
+            'top_terms_per_class': top_terms_per_class,
+            'class_sizes': class_sizes
+        }
+        
+        return result
+        
+    def plot_class_tfidf(self, class_tfidf_model, figsize=(12, 10), title=None, 
+                        colors=None, return_html=False):
+        """
+        Plot top terms for each class from a class-based TF-IDF model.
+        
+        Parameters:
+        -----------
+        class_tfidf_model : dict
+            Class TF-IDF model returned by create_class_tfidf_model
+        figsize : tuple, default=(12, 10)
+            Figure size
+        title : str, default=None
+            Figure title
+        colors : list, default=None
+            List of colors for each class
+        return_html : bool, default=False
+            Whether to return HTML instead of displaying the plot
+            
+        Returns:
+        --------
+        None or str
+            None if return_html=False, HTML string if return_html=True
+        """
+        # Extract model components
+        top_terms = class_tfidf_model['top_terms_per_class']
+        class_labels = class_tfidf_model['class_labels']
+        
+        # Determine number of classes and terms per class
+        n_classes = len(class_labels)
+        n_terms = min([len(terms) for terms in top_terms.values()])
+        
+        # Create figure
+        fig, axes = plt.subplots(
+            n_classes, 1, 
+            figsize=figsize, 
+            constrained_layout=True
+        )
+        
+        # Ensure axes is always a list
+        if n_classes == 1:
+            axes = [axes]
+        
+        # Use default color cycle if colors not provided
+        if colors is None:
+            colors = plt.cm.tab10.colors
+        
+        # Plot terms for each class
+        for i, class_label in enumerate(class_labels):
+            ax = axes[i]
+            
+            # Get terms and scores
+            terms, scores = zip(*top_terms[class_label][:n_terms])
+            indices = range(len(terms))
+            
+            # Plot horizontal bar chart
+            color = colors[i % len(colors)]
+            ax.barh(indices, scores, align='center', color=color, alpha=0.7)
+            
+            # Set labels and ticks
+            ax.set_yticks(indices)
+            ax.set_yticklabels(terms)
+            ax.set_xlabel('cTF-IDF Score')
+            ax.set_title(f'Class: {class_label}')
+            
+            # Invert y-axis to show highest scoring terms at the top
+            ax.invert_yaxis()
+        
+        # Set overall title
+        if title:
+            fig.suptitle(title, fontsize=16, y=1.02)
+        else:
+            fig.suptitle('Class-based TF-IDF (cTF-IDF) Analysis', fontsize=16, y=1.02)
+        
+        # Return HTML or display
+        if return_html:
+            # Convert figure to HTML
+            from io import BytesIO
+            import base64
+            
+            # Save figure to buffer
+            buf = BytesIO()
+            fig.savefig(buf, format='png')
+            buf.seek(0)
+            
+            # Encode as base64
+            data = base64.b64encode(buf.read()).decode('utf-8')
+            
+            # Create HTML
+            html = f'<img src="data:image/png;base64,{data}" alt="Class TF-IDF Model">'
+            
+            # Close figure
+            plt.close(fig)
+            
+            return html
+        else:
+            plt.tight_layout()
+            plt.show()
+    
+    def classify_with_ctfidf(self, model, texts, preprocess=True, preprocessing_options=None, 
+                           return_scores=False):
+        """
+        Classify documents using a class-based TF-IDF model.
+        
+        Parameters:
+        -----------
+        model : dict
+            Class TF-IDF model returned by create_class_tfidf_model
+        texts : list of str or pandas.Series
+            Texts to classify
+        preprocess : bool, default=True
+            Whether to preprocess texts before classification
+        preprocessing_options : dict, default=None
+            Options for text preprocessing if preprocess=True
+        return_scores : bool, default=False
+            Whether to return classification scores or just labels
+            
+        Returns:
+        --------
+        pandas.DataFrame or list
+            If return_scores=True: DataFrame with class probabilities for each document
+            If return_scores=False: List of predicted class labels
+            
+        Examples:
+        ---------
+        >>> import pandas as pd
+        >>> from freamon.utils.text_utils import TextProcessor
+        >>> 
+        >>> # Sample training data
+        >>> train_data = pd.DataFrame({
+        >>>     'text': ['Document about sports', 'Another sports text', 
+        >>>              'Financial news article', 'Banking information'],
+        >>>     'category': ['Sports', 'Sports', 'Finance', 'Finance']
+        >>> })
+        >>> 
+        >>> # New documents to classify
+        >>> new_docs = ['A text about basketball', 'News about stock market']
+        >>> 
+        >>> # Create text processor and model
+        >>> processor = TextProcessor()
+        >>> model = processor.create_class_tfidf_model(
+        >>>     df=train_data,
+        >>>     text_column='text',
+        >>>     class_column='category'
+        >>> )
+        >>> 
+        >>> # Classify new documents
+        >>> predictions = processor.classify_with_ctfidf(model, new_docs)
+        >>> print(f"Predictions: {predictions}")
+        """
+        # Extract model components
+        vectorizer = model['vectorizer']
+        class_tfidf = model['class_tfidf_matrix']
+        class_labels = model['class_labels']
+        
+        # Convert pandas Series to list
+        if isinstance(texts, pd.Series):
+            texts = texts.tolist()
+        
+        # Set default preprocessing options
+        default_preproc = {
+            'remove_stopwords': True,
+            'remove_punctuation': True,
+            'lemmatize': True,
+            'min_token_length': 3,
+            'custom_stopwords': []
+        }
+        
+        if preprocessing_options is None:
+            preprocessing_options = default_preproc
+        else:
+            preprocessing_options = {**default_preproc, **preprocessing_options}
+        
+        # Preprocess texts if requested
+        if preprocess:
+            processed_texts = [
+                self.preprocess_text(
+                    text,
+                    remove_stopwords=preprocessing_options['remove_stopwords'],
+                    remove_punctuation=preprocessing_options['remove_punctuation'],
+                    lemmatize=preprocessing_options['lemmatize'],
+                    min_token_length=preprocessing_options['min_token_length'],
+                    custom_stopwords=preprocessing_options['custom_stopwords']
+                ) for text in texts
+            ]
+        else:
+            processed_texts = texts
+        
+        # Transform texts using the model's vectorizer
+        doc_vectors = vectorizer.transform(processed_texts)
+        
+        # Calculate similarity of each document to each class
+        class_similarities = doc_vectors.dot(class_tfidf.T.tocsr())
+        
+        # Convert to dense array
+        class_scores = class_similarities.toarray()
+        
+        # Normalize scores to sum to 1 (convert to probabilities)
+        # Add a small epsilon to avoid division by zero
+        row_sums = class_scores.sum(axis=1) + 1e-10
+        class_probs = class_scores / row_sums[:, np.newaxis]
+        
+        if return_scores:
+            # Return DataFrame with class probabilities
+            score_df = pd.DataFrame(class_probs, columns=class_labels)
+            return score_df
+        else:
+            # Return predicted class labels
+            predictions = [class_labels[idx] for idx in class_probs.argmax(axis=1)]
+            return predictions
+    
+    def calculate_document_similarity(self, text1, text2, method='cosine'):
+        """Calculate similarity between two documents.
+        
+        Parameters:
+        -----------
+        text1 : str
+            First document text
+        text2 : str
+            Second document text
+        method : str, default='cosine'
+            Similarity method ('cosine', 'jaccard', 'levenshtein')
+            
+        Returns:
+        --------
+        float
+            Similarity score between 0.0 and 1.0
+        """
+        # Handle empty texts
+        if not text1 or not text2:
+            return 0.0
+        
+        # If texts are identical, return 1.0
+        if text1 == text2:
+            return 1.0
+        
+        # Calculate similarity based on method
+        if method == 'cosine':
+            return calculate_cosine_similarity(text1, text2)
+        elif method == 'jaccard':
+            try:
+                from freamon.deduplication.fuzzy_deduplication import calculate_jaccard_similarity
+                return calculate_jaccard_similarity(text1, text2)
+            except ImportError:
+                # Use fallback implementation
+                return calculate_cosine_similarity(text1, text2)
+        elif method == 'levenshtein':
+            try:
+                from freamon.deduplication.fuzzy_deduplication import calculate_levenshtein_similarity
+                return calculate_levenshtein_similarity(text1, text2)
+            except ImportError:
+                # Use fallback implementation
+                return 1.0 if text1 == text2 else 0.0
+        else:
+            # Default to cosine
+            return calculate_cosine_similarity(text1, text2)
     
     def extract_keywords_rake(self, text, max_keywords=10):
         """Extract keywords using a simplified RAKE algorithm.
@@ -817,7 +1255,8 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
                                deduplication_options=None, return_full_data=True,
                                return_original_mapping=False, use_multiprocessing=True,
                                anonymize=False, anonymization_config=None,
-                               auto_topics_range=(2, 15), auto_topics_method='coherence'):
+                               auto_topics_range=(2, 15), auto_topics_method='coherence',
+                               supervised_column=None):
     """
     Optimized topic modeling workflow with enhanced text preprocessing, deduplication,
     automatic topic number detection, and smart sampling for large datasets up to 100K rows.
@@ -834,9 +1273,10 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
         - If int: Uses the specified fixed number of topics
         - If 'auto': Automatically determines the optimal number within auto_topics_range
     method : str, default='nmf'
-        Topic modeling method ('nmf' or 'lda')
+        Topic modeling method ('nmf', 'lda', or 'ctfidf')
         - 'nmf': Non-negative Matrix Factorization (usually better for shorter texts)
         - 'lda': Latent Dirichlet Allocation (usually better for longer documents)
+        - 'ctfidf': Class-based TF-IDF (requires supervised_column to be specified)
     preprocessing_options : dict, default=None
         Options for text preprocessing:
         - 'enabled': bool, whether to perform preprocessing (default: True)
@@ -877,29 +1317,33 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
                       in a topic are to each other)
         - 'stability': Select topics based on both coherence and topic distinctiveness
                       (higher scores for topics that are coherent but not overlapping)
+    supervised_column : str, default=None
+        Name of column containing class/category labels for supervised topic modeling.
+        Required when method='ctfidf' for class-based TF-IDF.
         
     Returns:
     --------
     dict
         Dictionary containing:
         - 'topic_model': Dictionary with the trained model and topics
-            - 'model': The actual NMF or LDA model
+            - 'model': The actual NMF or LDA model (for NMF/LDA) or class_tfidf_model (for cTF-IDF)
             - 'vectorizer': The vectorizer used to create document-term matrix
             - 'feature_names': List of terms (features) used in the model
-            - 'n_topics': Number of topics used in the model
-            - 'method': Method used ('nmf' or 'lda')
+            - 'n_topics': Number of topics/classes used in the model
+            - 'method': Method used ('nmf', 'lda', or 'ctfidf')
             - 'topic_term_matrix': Matrix of topic-term weights
-            - 'coherence_score': Overall topic coherence score
+            - 'coherence_score': Overall topic coherence score (not for cTF-IDF)
+            - 'top_terms_per_class': For cTF-IDF, dictionary of top terms per class
         - 'document_topics': DataFrame with document-topic distributions
-            Each row corresponds to a document, columns are 'Topic 1', 'Topic 2', etc.
+            Each row corresponds to a document, columns are 'Topic 1', 'Topic 2', etc. (or class names for cTF-IDF)
         - 'topics': List of (topic_idx, words) tuples 
-            For each topic, contains the topic index and list of top words
+            For each topic/class, contains the index and list of top words
         - 'processing_info': Dict with processing statistics
             Information about preprocessing, deduplication, sampling, etc.
         - 'deduplication_map': Dict mapping deduplicated to original indices
             Only included if return_original_mapping=True
         - 'topic_selection': Dict with topic selection metrics
-            Only included if n_topics='auto', contains:
+            Only included if n_topics='auto' (not for cTF-IDF), contains:
             - 'method': Method used for selection ('coherence' or 'stability')
             - 'topic_range': List of topic numbers evaluated
             - 'coherence_scores': List of coherence scores for each topic number
@@ -1292,43 +1736,225 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
     
     # Step 5: Create the topic model
     
-    # Adjust max_features based on dataset size
-    if len(cleaned_texts) <= 1000:
-        max_features = 500
-    elif len(cleaned_texts) <= 5000:
-        max_features = 1000 
-    elif len(cleaned_texts) <= 20000:
-        max_features = 2000
-    else:
-        max_features = 3000
-    
-    # Adjust min_df based on dataset size
-    if len(cleaned_texts) <= 1000:
-        min_df = 2
-    elif len(cleaned_texts) <= 10000:
-        min_df = 3
-    else:
-        min_df = 5
-    
-    # Calculate max_features based on dataset size
-    max_features_value = min(max_features, len(cleaned_texts) // 2)
-    
-    # Check if we should find optimal number of topics automatically
-    if n_topics == 'auto':
-        print(f"Automatically determining optimal number of topics...")
-        start_time = time.time()
+    # Check if using class-based TF-IDF
+    if method == 'ctfidf':
+        # Verify supervised_column is provided
+        if supervised_column is None:
+            raise ValueError("supervised_column is required when method='ctfidf'")
         
-        # Initialize containers for results
-        topic_range = range(auto_topics_range[0], auto_topics_range[1] + 1)
-        coherence_scores = []
-        topic_models = []
+        # Verify supervised_column exists in the dataframe
+        if supervised_column not in sample_df.columns:
+            raise ValueError(f"supervised_column '{supervised_column}' not found in the dataframe")
         
-        # Try different numbers of topics
-        for num_topics in topic_range:
-            print(f"  Evaluating {num_topics} topics...")
-            model = processor.create_topic_model(
+        print(f"Creating class-based TF-IDF model with column '{supervised_column}'...")
+        
+        # Create cTF-IDF model
+        preprocessed_df = sample_df.copy()
+        
+        # If preprocessing was enabled, we need to preserve the preprocessed texts
+        if preproc_opts['enabled']:
+            preprocessed_df[text_column] = cleaned_texts
+            preprocess_for_ctfidf = False  # We've already preprocessed
+        else:
+            preprocess_for_ctfidf = True  # Let cTF-IDF handle preprocessing
+        
+        # Set preprocessing options for cTF-IDF
+        ctfidf_preproc_opts = {
+            'remove_stopwords': preproc_opts['remove_stopwords'],
+            'remove_punctuation': preproc_opts['remove_punctuation'],
+            'lemmatize': preproc_opts['use_lemmatization'],
+            'min_token_length': preproc_opts['min_token_length'],
+            'custom_stopwords': preproc_opts['custom_stopwords']
+        }
+        
+        # Determine number of topics (use number of unique classes)
+        n_unique_classes = sample_df[supervised_column].nunique()
+        if n_topics == 'auto':
+            n_topics = n_unique_classes
+            print(f"Using {n_topics} unique classes as topics")
+        
+        # Create cTF-IDF model
+        ctfidf_model = processor.create_class_tfidf_model(
+            df=preprocessed_df,
+            text_column=text_column,
+            class_column=supervised_column,
+            ngram_range=(1, 2),
+            max_features=10000,  # Use larger max_features for cTF-IDF
+            min_df=5,
+            max_df=0.9,
+            top_n_per_class=20,
+            preprocess=preprocess_for_ctfidf,
+            preprocessing_options=ctfidf_preproc_opts
+        )
+        
+        # Adapt cTF-IDF model to match expected topic model format
+        topic_model = {
+            'model': ctfidf_model,
+            'vectorizer': ctfidf_model['vectorizer'],
+            'feature_names': ctfidf_model['feature_names'],
+            'n_topics': len(ctfidf_model['class_labels']),
+            'method': 'ctfidf',
+            'topic_term_matrix': ctfidf_model['class_tfidf_matrix'],
+            'top_terms_per_class': ctfidf_model['top_terms_per_class'],
+            'class_labels': ctfidf_model['class_labels']
+        }
+        
+        # Create topics list in the same format as other methods
+        topics = []
+        for i, class_label in enumerate(ctfidf_model['class_labels']):
+            top_terms = [term[0] for term in ctfidf_model['top_terms_per_class'][class_label]]
+            topics.append((i, top_terms))
+        
+        topic_model['topics'] = topics
+        
+        # Get document-topic distributions using classify_with_ctfidf
+        # We use the class probabilities as "topic" probabilities
+        doc_topics = processor.classify_with_ctfidf(
+            model=ctfidf_model,
+            texts=preprocessed_df[text_column],
+            preprocess=False,  # Already preprocessed
+            return_scores=True
+        )
+        
+        # Set index to match sample_df
+        doc_topics.index = sample_df.index
+        
+        # No automatic topic selection for cTF-IDF (uses class labels)
+        topic_selection = None
+        
+    else:
+        # Standard LDA or NMF topic modeling
+        
+        # Adjust max_features based on dataset size
+        if len(cleaned_texts) <= 1000:
+            max_features = 500
+        elif len(cleaned_texts) <= 5000:
+            max_features = 1000 
+        elif len(cleaned_texts) <= 20000:
+            max_features = 2000
+        else:
+            max_features = 3000
+        
+        # Adjust min_df based on dataset size
+        if len(cleaned_texts) <= 100:
+            min_df = 1  # For very small datasets, use min_df=1
+        elif len(cleaned_texts) <= 1000:
+            min_df = 2
+        elif len(cleaned_texts) <= 10000:
+            min_df = 3
+        else:
+            min_df = 5
+        
+        # Calculate max_features based on dataset size
+        max_features_value = min(max_features, len(cleaned_texts) // 2)
+        
+        # Check if we should find optimal number of topics automatically
+        if n_topics == 'auto':
+            print(f"Automatically determining optimal number of topics...")
+            start_time = time.time()
+            
+            # Initialize containers for results
+            topic_range = range(auto_topics_range[0], auto_topics_range[1] + 1)
+            coherence_scores = []
+            topic_models = []
+            
+            # Try different numbers of topics
+            for num_topics in topic_range:
+                print(f"  Evaluating {num_topics} topics...")
+                model = processor.create_topic_model(
+                    texts=cleaned_texts,
+                    n_topics=num_topics,
+                    method=method,
+                    max_features=max_features_value,
+                    max_df=0.7,
+                    min_df=min_df,
+                    ngram_range=(1, 2),
+                    random_state=42
+                )
+                
+                # Store model and coherence score
+                topic_models.append(model)
+                coherence_scores.append(model['coherence_score'])
+                
+                # Calculate additional metrics for the stability method
+            stability_scores = []
+            if auto_topics_method == 'stability':
+                # Calculate stability scores based on topic term matrix
+                for i, model in enumerate(topic_models):
+                    topic_term_matrix = model['topic_term_matrix']
+                    num_topics = model['n_topics']
+                    
+                    # Calculate topic stability metrics
+                    # 1. Calculate average intra-topic similarity (higher is better)
+                    intra_similarity = []
+                    for t in range(num_topics):
+                        # Calculate cosine similarity between this topic and all other topics
+                        cos_sims = []
+                        for other_t in range(num_topics):
+                            if t != other_t:
+                                # Calculate cosine similarity between topic vectors
+                                dot_product = np.dot(topic_term_matrix[t], topic_term_matrix[other_t])
+                                norm_t = np.linalg.norm(topic_term_matrix[t])
+                                norm_other = np.linalg.norm(topic_term_matrix[other_t])
+                                cos_sim = dot_product / (norm_t * norm_other) if norm_t > 0 and norm_other > 0 else 0
+                                cos_sims.append(cos_sim)
+                        
+                        # Average similarity (higher means topics are more similar, which is less desirable)
+                        if cos_sims:
+                            intra_similarity.append(np.mean(cos_sims))
+                    
+                    # Calculate stability score: coherence penalized by intra-topic similarity
+                    # High coherence and low similarity is ideal
+                    mean_intra_sim = np.mean(intra_similarity) if intra_similarity else 0
+                    # Stability score: coherence score adjusted by topic distinctiveness
+                    stability_score = coherence_scores[i] * (1 - mean_intra_sim)
+                    stability_scores.append(stability_score)
+            
+            # Find optimal number of topics
+            if auto_topics_method == 'coherence':
+                # Select model with highest coherence score
+                best_idx = np.argmax(coherence_scores)
+                best_n_topics = topic_range[best_idx]
+                best_model = topic_models[best_idx]
+            elif auto_topics_method == 'stability' and stability_scores:
+                # Select model with highest stability score
+                best_idx = np.argmax(stability_scores)
+                best_n_topics = topic_range[best_idx]
+                best_model = topic_models[best_idx]
+            else:
+                # Default to coherence if stability isn't available
+                best_idx = np.argmax(coherence_scores)
+                best_n_topics = topic_range[best_idx]
+                best_model = topic_models[best_idx]
+            
+            # Use the best model
+            topic_model = best_model
+            n_topics = best_n_topics
+            
+            # Store topic selection metrics
+            topic_selection = {
+                'method': auto_topics_method,
+                'topic_range': list(topic_range),
+                'coherence_scores': coherence_scores,
+                'best_n_topics': best_n_topics,
+                'selection_time': time.time() - start_time
+            }
+            
+            # Add stability scores if available
+            if stability_scores:
+                topic_selection['stability_scores'] = stability_scores
+            
+            print(f"Optimal number of topics: {best_n_topics} (coherence score: {coherence_scores[best_idx]:.4f})")
+            print(f"Topic selection completed in {topic_selection['selection_time']:.2f} seconds")
+            
+        else:
+            # Use the specified number of topics
+            print(f"Creating {method.upper()} topic model with {n_topics} topics...")
+            topic_model = time_operation(
+                f"Creating {n_topics}-topic model",
+                processor.create_topic_model,
                 texts=cleaned_texts,
-                n_topics=num_topics,
+                n_topics=n_topics,
                 method=method,
                 max_features=max_features_value,
                 max_df=0.7,
@@ -1336,104 +1962,13 @@ def create_topic_model_optimized(df, text_column, n_topics='auto', method='nmf',
                 ngram_range=(1, 2),
                 random_state=42
             )
-            
-            # Store model and coherence score
-            topic_models.append(model)
-            coherence_scores.append(model['coherence_score'])
-            
-            # Calculate additional metrics for the stability method
-        stability_scores = []
-        if auto_topics_method == 'stability':
-            # Calculate stability scores based on topic term matrix
-            for i, model in enumerate(topic_models):
-                topic_term_matrix = model['topic_term_matrix']
-                num_topics = model['n_topics']
-                
-                # Calculate topic stability metrics
-                # 1. Calculate average intra-topic similarity (higher is better)
-                intra_similarity = []
-                for t in range(num_topics):
-                    # Calculate cosine similarity between this topic and all other topics
-                    cos_sims = []
-                    for other_t in range(num_topics):
-                        if t != other_t:
-                            # Calculate cosine similarity between topic vectors
-                            dot_product = np.dot(topic_term_matrix[t], topic_term_matrix[other_t])
-                            norm_t = np.linalg.norm(topic_term_matrix[t])
-                            norm_other = np.linalg.norm(topic_term_matrix[other_t])
-                            cos_sim = dot_product / (norm_t * norm_other) if norm_t > 0 and norm_other > 0 else 0
-                            cos_sims.append(cos_sim)
-                    
-                    # Average similarity (higher means topics are more similar, which is less desirable)
-                    if cos_sims:
-                        intra_similarity.append(np.mean(cos_sims))
-                
-                # Calculate stability score: coherence penalized by intra-topic similarity
-                # High coherence and low similarity is ideal
-                mean_intra_sim = np.mean(intra_similarity) if intra_similarity else 0
-                # Stability score: coherence score adjusted by topic distinctiveness
-                stability_score = coherence_scores[i] * (1 - mean_intra_sim)
-                stability_scores.append(stability_score)
+            topic_selection = None
         
-        # Find optimal number of topics
-        if auto_topics_method == 'coherence':
-            # Select model with highest coherence score
-            best_idx = np.argmax(coherence_scores)
-            best_n_topics = topic_range[best_idx]
-            best_model = topic_models[best_idx]
-        elif auto_topics_method == 'stability' and stability_scores:
-            # Select model with highest stability score
-            best_idx = np.argmax(stability_scores)
-            best_n_topics = topic_range[best_idx]
-            best_model = topic_models[best_idx]
-        else:
-            # Default to coherence if stability isn't available
-            best_idx = np.argmax(coherence_scores)
-            best_n_topics = topic_range[best_idx]
-            best_model = topic_models[best_idx]
+        # Step 6: Get document-topic distribution for the sample
+        doc_topics = processor.get_document_topics(topic_model)
         
-        # Use the best model
-        topic_model = best_model
-        n_topics = best_n_topics
-        
-        # Store topic selection metrics
-        topic_selection = {
-            'method': auto_topics_method,
-            'topic_range': list(topic_range),
-            'coherence_scores': coherence_scores,
-            'best_n_topics': best_n_topics,
-            'selection_time': time.time() - start_time
-        }
-        
-        # Add stability scores if available
-        if stability_scores:
-            topic_selection['stability_scores'] = stability_scores
-        
-        print(f"Optimal number of topics: {best_n_topics} (coherence score: {coherence_scores[best_idx]:.4f})")
-        print(f"Topic selection completed in {topic_selection['selection_time']:.2f} seconds")
-        
-    else:
-        # Use the specified number of topics
-        print(f"Creating {method.upper()} topic model with {n_topics} topics...")
-        topic_model = time_operation(
-            f"Creating {n_topics}-topic model",
-            processor.create_topic_model,
-            texts=cleaned_texts,
-            n_topics=n_topics,
-            method=method,
-            max_features=max_features_value,
-            max_df=0.7,
-            min_df=min_df,
-            ngram_range=(1, 2),
-            random_state=42
-        )
-        topic_selection = None
-    
-    # Step 6: Get document-topic distribution for the sample
-    doc_topics = processor.get_document_topics(topic_model)
-    
-    # Add index from sample_df to doc_topics
-    doc_topics.index = sample_df.index
+        # Add index from sample_df to doc_topics
+        doc_topics.index = sample_df.index
     
     # Step 7: If requested, process the full dataset (including documents outside the sample)
     full_dataset_processed = False
