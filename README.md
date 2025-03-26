@@ -549,6 +549,9 @@ For more detailed information, refer to the examples directory and the following
 - [Deduplication Tracking](README_DEDUPLICATION_TRACKING.md)
 - [Markdown Report Generation](README_MARKDOWN_REPORTS.md)
 - [LSH Deduplication](README_LSH_DEDUPLICATION.md)
+- [Advanced EDA Features](README_ADVANCED_EDA.md)
+- [Auto-Split Modeling](README_AUTO_SPLIT.md)
+- [Export Capabilities](README_EXPORT.md)
 
 ## License
 
