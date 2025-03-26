@@ -783,28 +783,29 @@ class HyperparameterTuningStep(PipelineStep):
         if y is None:
             raise ValueError("Target variable y is required for hyperparameter tuning")
         
-        # Currently only support LightGBM
-        if self.model_type != "lightgbm":
-            raise ValueError(f"Model type '{self.model_type}' not supported. Only 'lightgbm' is currently supported.")
+        # Support both direct 'lightgbm' and shorthand types like 'lgbm_classifier'
+        supported_types = ["lightgbm", "lgbm_classifier", "lgbm_regressor"]
+        if self.model_type not in supported_types:
+            raise ValueError(f"Model type '{self.model_type}' not supported. Supported types: {', '.join(supported_types)}")
         
         # Ensure categorical features exist in the data
         for feat in self.categorical_features:
             if feat not in X.columns:
                 raise ValueError(f"Categorical feature '{feat}' not found in the dataframe")
         
-        # Create and run tuner
-        if self.model_type == "lightgbm":
-            self.tuner = LightGBMTuner(
-                problem_type=self.problem_type,
-                objective=self.fixed_params.get('objective', None),
-                metric=self.metric,
-                cv=self.cv,
-                cv_type=self.cv_type,
-                random_state=self.random_state,
-                n_trials=self.n_trials,
-                n_jobs=-1,  # Use all cores
-                verbose=True
-            )
+        # Create and run tuner - handle both direct and shorthand model types
+        # All supported types use the LightGBMTuner
+        self.tuner = LightGBMTuner(
+            problem_type=self.problem_type,
+            objective=self.fixed_params.get('objective', None),
+            metric=self.metric,
+            cv=self.cv,
+            cv_type=self.cv_type,
+            random_state=self.random_state,
+            n_trials=self.n_trials,
+            n_jobs=-1,  # Use all cores
+            verbose=True
+        )
             
             # Run tuning
             self.best_params = self.tuner.tune(
