@@ -507,6 +507,58 @@ print("\nExported reports to CSV files and PowerPoint")
 print("\nDuplicate analysis complete.")
 ```
 
+### Performance Optimization for Large-Scale Deduplication
+
+When working with large datasets, `flag_similar_records` offers powerful memory optimization options to balance performance and accuracy:
+
+```python
+from freamon.deduplication.flag_duplicates import flag_similar_records
+
+# For a dataset with 100,000+ records
+result_df = flag_similar_records(
+    large_df,
+    columns=['name', 'address', 'phone', 'email'],
+    weights={'name': 0.4, 'address': 0.3, 'phone': 0.2, 'email': 0.1},
+    threshold=0.85,           # Higher threshold for precision
+    chunk_size=500,           # Optimize memory usage
+    max_comparisons=1000000,  # Limit total comparisons
+    n_jobs=4,                 # Parallel processing
+    use_polars=True           # Use Polars if available
+)
+```
+
+#### Chunk Size and Accuracy Tradeoffs
+
+The `chunk_size` parameter creates a fundamental tradeoff between memory efficiency and detection accuracy:
+
+| Dataset Size | Recommended Chunk Size | Recommended max_comparisons | Impact on Accuracy |
+|--------------|------------------------|----------------------------|-------------------|
+| < 20,000 rows | Non-chunked (None) | Default | Highest accuracy, full comparison |
+| 20,000-100,000 rows | 1000-2000 | 1,000,000-3,000,000 | Good balance of accuracy and memory usage |
+| 100,000-500,000 rows | 500-1000 | 1,000,000-5,000,000 | Some potential duplicates might be missed |
+| > 500,000 rows | 250-500 | 500,000-1,000,000 | Focus on highest-quality matches |
+
+**How it works:**
+- Smaller chunks reduce memory usage dramatically but may miss some potential duplicates
+- The algorithm prioritizes within-chunk comparisons where duplicates are more likely
+- Connected components analysis helps capture relationships between records even across chunks
+- For critical applications, start with larger chunk sizes and decrease only if memory issues occur
+
+For extremely large datasets, consider increasing the similarity threshold to focus on higher-quality matches:
+
+```python
+# For very large datasets (500k+ records)
+result_df = flag_similar_records(
+    very_large_df,
+    columns=columns,
+    weights=weights,
+    threshold=0.9,            # Higher threshold
+    chunk_size=250,           # Very small chunks
+    max_comparisons=500000,   # Limited comparisons
+    n_jobs=8                  # More parallel workers
+)
+```
+
 ### Advanced EDA and Feature Selection
 
 Perform advanced multivariate analysis and feature selection:
