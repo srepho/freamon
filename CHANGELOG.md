@@ -1,5 +1,39 @@
 # Changelog
 
+## Version 0.3.52
+* Fixed critical bugs in AutoModelFlow functionality:
+  * Enhanced topic model parameter filtering to explicitly define supported parameters
+  * Added better handling of custom parameters in topic modeling functions
+  * Fixed cross-validation implementation to properly call cv.split() method
+  * Added debug logging for filtered parameters to improve troubleshooting
+  * Added complete parameter validation for topic modeling
+  * Fixed pipeline integration when passing custom model parameters
+
+## Version 0.3.51
+* Added automatic text column detection to flag_similar_records function:
+  * Implemented smart detection of text vs. structured data columns
+  * Added specialized text similarity methods: fuzzy, TF-IDF, n-gram, and LSH
+  * Added text-specific thresholding and automatic weight boosting
+  * Fixed parallel processing issues for efficient handling of large datasets
+  * Added comprehensive test suite for auto-detection features
+  * Created detailed examples showing auto-detection capabilities
+  * Implemented backwards compatibility with existing code
+  * Added documentation for all new parameters and features
+
+## Version 0.3.50
+* Fixed critical bugs in parameter handling:
+  * Fixed errors when passing unsupported parameters to topic modeling functions
+  * Fixed parameter extraction for early_stopping_rounds in LightGBM models
+  * Added comprehensive test coverage for parameter handling
+  * Implemented parameter filtering to safely handle unsupported parameters
+  * Added robust fallback mechanisms for error recovery in topic modeling
+  * Fixed model attribute access in pipeline integration tests
+  * Improved Pipeline integration with shorthand model types
+* Added new test files for comprehensive validation:
+  * Added test_shorthand_model_types_integration.py for validating model type support
+  * Added test_early_stopping_parameter.py for early stopping parameter handling
+  * Added test_topic_modeling_parameters.py for parameter filtering tests
+
 ## Version 0.3.49
 * Enhanced model type support in hyperparameter tuning:
   * Added support for shorthand model types like 'lgbm_classifier' and 'lgbm_regressor'
